@@ -1,0 +1,2899 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D育成＆バトルゲーム - ぷにモン</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- OrbitControls -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- RPG pixel-style fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --pixel-ink: #27344b;
+            --pixel-edge: #17253b;
+            --pixel-cream: #fff4cc;
+            --pixel-gold: #f4c85a;
+            --pixel-blue: #5bb9ed;
+        }
+        body {
+            font-family: 'DotGothic16', sans-serif;
+            user-select: none;
+            touch-action: manipulation;
+            background-color: #172b45;
+            background-image:
+                radial-gradient(ellipse at 15% 20%, rgba(73, 135, 190, .22) 0 2px, transparent 3px),
+                radial-gradient(ellipse at 80% 75%, rgba(95, 166, 206, .16) 0 2px, transparent 3px),
+                linear-gradient(135deg, #15253e, #294663 48%, #1b304b);
+            background-size: 18px 18px, 24px 24px, auto;
+            image-rendering: pixelated;
+        }
+        canvas {
+            display: block;
+            outline: none;
+        }
+
+        /* Pixel-RPG UI skin */
+        header, footer {
+            background-color: #243b58 !important;
+            background-image:
+                linear-gradient(45deg, rgba(255,255,255,.035) 25%, transparent 25%, transparent 75%, rgba(255,255,255,.035) 75%),
+                linear-gradient(45deg, rgba(0,0,0,.07) 25%, transparent 25%, transparent 75%, rgba(0,0,0,.07) 75%) !important;
+            background-size: 8px 8px !important;
+            border-color: #8eb8d7 !important;
+            border-radius: 0 !important;
+            box-shadow: 0 4px 0 #101c30, inset 0 0 0 2px rgba(255,255,255,.08) !important;
+            backdrop-filter: none !important;
+        }
+        #canvas-container {
+            border-radius: 0 !important;
+            border: 4px solid #d4c28b !important;
+            box-shadow: 0 0 0 3px #263954, 0 7px 0 #101c30, inset 0 0 0 2px rgba(255,255,255,.25) !important;
+        }
+        button, #notification-banner, #stat-gold, #mode-badge,
+        #battle-ui > div > div, #battle-log, #battle-movement, #battle-commands,
+        #custom-modal > div {
+            border-radius: 0 !important;
+            border-width: 2px !important;
+            box-shadow: 3px 3px 0 rgba(9, 18, 32, .65) !important;
+        }
+        button {
+            font-family: 'DotGothic16', sans-serif !important;
+            letter-spacing: .02em;
+            border-style: solid !important;
+            border-color: rgba(255,255,255,.45) !important;
+            text-shadow: 1px 1px 0 rgba(0,0,0,.3);
+        }
+        h1, h3, #stat-gold, #mode-badge, #notification-banner {
+            text-shadow: 1px 1px 0 #101c30;
+        }
+        /* Status meters */
+        #bar-exp, #bar-hunger, #bar-mood, #bar-hp, #enemy-hp-bar, .enemy-party-hp-bar {
+            border-right: 2px solid rgba(255,255,255,.75);
+            image-rendering: pixelated;
+        }
+        .battle-hp-layout {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: .75rem;
+            align-items: start;
+        }
+        #enemy-party-hp-list {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: .5rem;
+            min-width: 0;
+        }
+        .enemy-party-hp-card { min-width: 0; }
+        #infinite-run-hud { font-size: 11px; line-height: 1.7; color: #fde68a; margin-top: 5px; padding-top: 5px; border-top: 1px solid rgba(253,230,138,.35); }
+        .infinite-record-row { display:flex; justify-content:space-between; gap:8px; align-items:center; padding:9px 10px; background:rgba(9,30,51,.9); border:1px solid #416486; font-size:12px; }
+        .infinite-record-row:first-child { border-color:#f4c85a; }
+        @media (max-width: 700px) {
+            #enemy-party-hp-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+        @media (max-width: 460px) {
+            .battle-hp-layout { grid-template-columns: minmax(0, 1fr) auto; gap: .4rem; }
+            #enemy-party-hp-list { grid-template-columns: minmax(0, 1fr); gap: .3rem; }
+            #battle-ui { padding: .65rem; }
+            .enemy-party-hp-card { padding: .3rem !important; }
+        }
+        .rounded-full, .rounded-xl, .rounded-2xl, .rounded-3xl {
+            border-radius: 0 !important;
+        }
+        /* Dialogue box */
+        #speech-bubble {
+            font-family: 'DotGothic16', sans-serif !important;
+            background-color: #fff4cc !important;
+            color: #27344b !important;
+            border: 3px solid #27344b !important;
+            border-radius: 0 !important;
+            box-shadow:
+                4px 0 0 #27344b, -4px 0 0 #27344b,
+                0 4px 0 #27344b, 0 -4px 0 #27344b,
+                4px 4px 0 rgba(12, 22, 38, .35) !important;
+            opacity: 1 !important;
+            image-rendering: pixelated;
+            letter-spacing: .035em;
+        }
+        #speech-bubble::after {
+            content: "";
+            position: absolute;
+            left: calc(50% - 7px);
+            bottom: -13px;
+            width: 12px;
+            height: 12px;
+            background: #fff4cc;
+            border-right: 3px solid #27344b;
+            border-bottom: 3px solid #27344b;
+            transform: rotate(45deg);
+            z-index: -1;
+        }
+        #speech-bubble > div {
+            display: none;
+        }
+        #speech-text {
+            font-size: 1.08em;
+            line-height: 1.6;
+            text-shadow: 1px 1px 0 rgba(39, 52, 75, .12);
+        }
+        #stat-level, #stat-exp, #stat-next-exp, #stat-hunger, #stat-mood,
+        #enemy-level, #enemy-hp, #enemy-max-hp, #battle-turn-text {
+            font-family: 'DotGothic16', sans-serif;
+            letter-spacing: .03em;
+        }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1b2d45; border-radius: 0; }
+        ::-webkit-scrollbar-thumb { background: #e0c77f; border: 2px solid #1b2d45; border-radius: 0; }
+    </style>
+</head>
+<body class="bg-slate-900 text-white min-h-screen flex flex-col items-center justify-between overflow-x-hidden">
+
+    <!-- Header / Status Bar -->
+    <header class="w-full max-w-4xl p-4 bg-slate-800/80 backdrop-blur-md border-b border-slate-700 shadow-lg flex flex-wrap justify-between items-center gap-4 z-10 rounded-b-2xl">
+        <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center font-extrabold text-xl shadow-inner">
+                👾
+            </div>
+            <div>
+                <h1 class="font-bold text-lg leading-tight flex items-center gap-2">
+                    <span id="pet-name">ぷに太</span>
+                    <span class="text-xs bg-indigo-500/30 text-indigo-300 px-2 py-0.5 rounded-full border border-indigo-500/30">Lv.<span id="stat-level">1</span></span>
+                </h1>
+                <p class="text-xs text-slate-400">3Dプロシージャル・モンスター</p>
+            </div>
+        </div>
+
+        <!-- Status Gauges -->
+        <div class="flex items-center gap-4 flex-wrap">
+            <div class="flex flex-col w-28">
+                <div class="flex justify-between text-xs text-slate-400 mb-1">
+                    <span>EXP</span>
+                    <span><span id="stat-exp">0</span>/<span id="stat-next-exp">100</span></span>
+                </div>
+                <div class="w-full bg-slate-700 h-2 rounded-full overflow-hidden">
+                    <div id="bar-exp" class="bg-amber-400 h-full transition-all duration-300" style="width: 0%;"></div>
+                </div>
+            </div>
+
+            <div class="flex flex-col w-28">
+                <div class="flex justify-between text-xs text-slate-400 mb-1">
+                    <span>HP</span>
+                    <span><span id="stat-hp">100</span>/<span id="stat-max-hp">100</span></span>
+                </div>
+                <div class="w-full bg-slate-700 h-2 rounded-full overflow-hidden">
+                    <div id="bar-hp" class="bg-red-500 h-full transition-all duration-300" style="width: 100%;"></div>
+                </div>
+            </div>
+
+            <div class="flex flex-col w-28">
+                <div class="flex justify-between text-xs text-slate-400 mb-1">
+                    <span>満腹度</span>
+                    <span><span id="stat-hunger">80</span>/100</span>
+                </div>
+                <div class="w-full bg-slate-700 h-2 rounded-full overflow-hidden">
+                    <div id="bar-hunger" class="bg-emerald-400 h-full transition-all duration-300" style="width: 80%;"></div>
+                </div>
+            </div>
+
+            <div class="flex flex-col w-28">
+                <div class="flex justify-between text-xs text-slate-400 mb-1">
+                    <span>機嫌</span>
+                    <span><span id="stat-mood">80</span>/100</span>
+                </div>
+                <div class="w-full bg-slate-700 h-2 rounded-full overflow-hidden">
+                    <div id="bar-mood" class="bg-pink-400 h-full transition-all duration-300" style="width: 80%;"></div>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-1.5 bg-slate-700/60 px-3 py-1.5 rounded-xl border border-slate-600">
+                <span class="text-amber-300">🪙</span>
+                <span id="stat-gold" class="font-bold text-amber-200">500</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="relative w-full max-w-4xl flex-1 flex flex-col items-center justify-center my-4 px-4">
+        <div id="canvas-container" class="relative w-full h-[380px] sm:h-[440px] bg-gradient-to-b from-slate-800 to-slate-900 rounded-3xl shadow-2xl border border-slate-700 overflow-hidden">
+            
+            <div id="speech-bubble" class="absolute top-6 left-1/2 -transform -translate-x-1/2 bg-white text-slate-900 px-5 py-2.5 rounded-2xl shadow-xl font-bold text-sm sm:text-base border border-slate-200 transition-all duration-300 z-10 pointer-events-none opacity-90 flex items-center gap-2">
+                <span>💬</span>
+                <span id="speech-text">「こんにちは！なでてくれると嬉しいな！」</span>
+                <div class="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-4 h-4 bg-white rotate-45 border-r border-b border-slate-200"></div>
+            </div>
+
+            <div class="absolute top-4 left-4 z-10">
+                <span id="mode-badge" class="px-3 py-1 bg-indigo-600/90 backdrop-blur-md text-white text-xs font-bold rounded-xl shadow-lg border border-indigo-400/30 flex items-center gap-1.5">
+                    ✨ 育成ルーム
+                </span>
+            </div>
+
+            <div id="battle-ui" class="absolute inset-0 hidden flex-col justify-between p-6 z-20 pointer-events-none">
+                <div class="battle-hp-layout">
+                    <div id="enemy-party-hp-list" aria-label="敵全員のHP" aria-live="polite"></div>
+                    <div class="bg-slate-900/90 border border-slate-700 px-3 py-2 text-center shadow-lg">
+                        <span id="battle-turn-text" class="text-xs font-bold text-amber-300 animate-pulse">あなたのターン</span>
+                        <div id="infinite-run-hud" class="hidden">
+                            <div>♾️ 無限ダンジョン</div>
+                            <div>第 <strong id="infinite-floor-hud">1</strong> 波</div>
+                            <div>SCORE <strong id="infinite-score-hud">0</strong></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex flex-col gap-4">
+                    <div id="battle-log" class="bg-slate-900/70 border border-slate-700 p-3 rounded-xl text-xs text-slate-300 h-16 overflow-y-auto flex flex-col justify-end">
+                        <p class="text-amber-400">野生の敵が現れた！バトル開始！</p>
+                    </div>
+
+                    <div id="battle-movement" class="bg-slate-900/70 border border-slate-700 p-2 rounded-xl text-center text-xs text-slate-400">
+                        🤖 ぷに太と敵が自動で動き回る！
+                    </div>
+
+                    <div id="battle-commands" class="text-center text-xs text-slate-300 bg-slate-900/60 border border-slate-700/70 rounded-xl px-3 py-2">
+                        ⚔️ オートバトル中：キャラクターが自動で攻撃します
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Stage Select Overlay -->
+    <div id="stage-select-overlay" class="hidden fixed inset-0 z-[100] items-center justify-center p-4" style="background:rgba(8,15,29,.84);backdrop-filter:blur(4px);">
+        <div class="w-full max-w-3xl max-h-[90vh] overflow-y-auto" style="background:#243b58;border:4px solid #e0c77f;box-shadow:8px 8px 0 #101c30;color:#fff4cc;padding:20px;">
+            <div class="flex items-center justify-between gap-3 mb-2">
+                <div>
+                    <div style="font-family:'Press Start 2P',monospace;font-size:10px;color:#f4c85a;line-height:1.8;">PUNIMON QUEST</div>
+                    <h2 style="font-family:'DotGothic16',sans-serif;font-size:26px;font-weight:bold;">ステージ選択</h2>
+                </div>
+                <button onclick="closeStageSelect()" style="background:#8d3546;color:white;padding:8px 12px;border:2px solid #ffb2b2;">とじる ✕</button>
+            </div>
+            <p class="text-sm mb-4" style="color:#c8d8eb;">ダンジョンが深くなるほど強力な敵が登場！40%の確率で群れ（複数体）が出現するよ。</p>
+            <div id="stage-chapters" class="flex flex-col gap-4"></div>
+            <div class="mt-4 text-xs" style="color:#9fb8d3;">全30ステージ • オートバトル • 群れ発生率40%</div>
+        </div>
+    </div>
+
+    <!-- Infinite Dungeon Menu -->
+    <div id="infinite-menu-overlay" class="hidden fixed inset-0 z-[105] items-center justify-center p-4" style="background:rgba(5,12,25,.9);backdrop-filter:blur(5px);">
+        <div class="w-full max-w-xl max-h-[90vh] overflow-y-auto" style="background:#243b58;border:4px solid #f4c85a;box-shadow:8px 8px 0 #101c30;color:#fff4cc;padding:20px;">
+            <div class="flex items-center justify-between gap-3 mb-3">
+                <div>
+                    <div style="font-family:'Press Start 2P',monospace;font-size:10px;color:#f4c85a;line-height:1.8;">ENDLESS SURVIVAL</div>
+                    <h2 style="font-family:'DotGothic16',sans-serif;font-size:26px;font-weight:bold;">♾️ 無限ダンジョン</h2>
+                </div>
+                <button onclick="closeInfiniteDungeonMenu()" style="background:#8d3546;color:white;padding:8px 12px;border:2px solid #ffb2b2;">とじる ✕</button>
+            </div>
+            <p class="text-sm mb-3" style="color:#c8d8eb;line-height:1.8;">敵は何波でも出現し、進むほどHPと攻撃力が上昇！10波ごとにボスが登場するよ。ぷに太が倒れるまで続き、踏破数・撃破数・ボス撃破をもとにスコアを獲得。</p>
+            <div class="grid grid-cols-3 gap-2 mb-4 text-center">
+                <div style="padding:10px 5px;background:#152940;border:1px solid #54789a;"><div style="font-size:11px;color:#9fb8d3;">通常波</div><strong style="color:#86efac;">敵が強化</strong></div>
+                <div style="padding:10px 5px;background:#152940;border:1px solid #54789a;"><div style="font-size:11px;color:#9fb8d3;">10波ごと</div><strong style="color:#f4c85a;">ボス出現</strong></div>
+                <div style="padding:10px 5px;background:#152940;border:1px solid #54789a;"><div style="font-size:11px;color:#9fb8d3;">ランキング</div><strong style="color:#93c5fd;">上位10件</strong></div>
+            </div>
+            <label for="infinite-player-name" class="block text-sm mb-1" style="color:#c8d8eb;">ランキングに表示する名前</label>
+            <input id="infinite-player-name" maxlength="12" value="ぷに太" class="w-full mb-4" style="box-sizing:border-box;padding:10px;background:#152940;color:#fff4cc;border:2px solid #54789a;outline:none;" />
+            <div class="flex items-center justify-between gap-2 mb-2">
+                <h3 style="font-size:17px;font-weight:bold;color:#f4c85a;">🏆 ハイスコア TOP 10</h3>
+                <span style="font-size:10px;color:#9fb8d3;">このブラウザ内の記録</span>
+            </div>
+            <div id="infinite-record-list" class="flex flex-col gap-2 mb-4"></div>
+            <div class="flex gap-2">
+                <button onclick="startInfiniteDungeon()" style="flex:1;padding:12px;background:#9a7130;color:#fff4cc;border:2px solid #f4d27c;font-weight:bold;">♾️ 挑戦開始！</button>
+                <button onclick="closeInfiniteDungeonMenu()" style="padding:12px;background:#344d6b;color:#fff4cc;border:2px solid #8eb8d7;">戻る</button>
+            </div>
+            <p class="text-xs mt-3" style="color:#9fb8d3;line-height:1.6;">記録はこの端末・ブラウザに保存されるローカルランキングだよ。オンライン共通ランキングではありません。</p>
+        </div>
+    </div>
+
+    <!-- Footer / Control Panel -->
+    <footer class="w-full max-w-4xl p-4 bg-slate-800/80 backdrop-blur-md border-t border-slate-700 shadow-lg rounded-t-2xl z-10 flex flex-col gap-3">
+        <div id="raising-controls" class="grid grid-cols-2 sm:grid-cols-6 gap-3">
+            <button onclick="actionPet()" class="bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white font-bold py-3 px-4 rounded-2xl shadow-lg border border-pink-400/30 transition transform active:scale-95 flex items-center justify-center gap-2">
+                <span>✋</span> なでる
+            </button>
+            <button onclick="actionFeed()" class="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold py-3 px-4 rounded-2xl shadow-lg border border-emerald-400/30 transition transform active:scale-95 flex items-center justify-center gap-2">
+                <span>🍎</span> ごはん (-30🪙)
+            </button>
+            <button onclick="actionPlay()" class="bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-bold py-3 px-4 rounded-2xl shadow-lg border border-amber-400/30 transition transform active:scale-95 flex items-center justify-center gap-2">
+                <span>⚽</span> あそぶ
+            </button>
+            <button onclick="openStageSelect()" class="bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-bold py-3 px-4 rounded-2xl shadow-lg border border-indigo-400/30 transition transform active:scale-95 flex items-center justify-center gap-2">
+                <span>⚔️</span> バトル開始
+            </button>
+            <button onclick="openSkillBook()" class="bg-gradient-to-r from-cyan-600 to-blue-700 hover:from-cyan-500 hover:to-blue-600 text-white font-bold py-3 px-4 rounded-2xl shadow-lg border border-cyan-300/40 transition transform active:scale-95 flex items-center justify-center gap-2">
+                <span>✨</span> スキル図鑑
+            </button>
+            <button onclick="openInfiniteDungeonMenu()" class="bg-gradient-to-r from-amber-600 to-yellow-700 hover:from-amber-500 hover:to-yellow-600 text-white font-bold py-3 px-4 rounded-2xl shadow-lg border border-yellow-300/50 transition transform active:scale-95 flex items-center justify-center gap-2">
+                <span>♾️</span> 無限ダンジョン
+            </button>
+        </div>
+
+        <div class="flex flex-wrap items-center justify-between gap-3" style="background:#1d334e;border:2px solid #8eb8d7;padding:10px;box-shadow:3px 3px 0 rgba(9,18,32,.55);">
+            <div class="flex flex-wrap gap-4 text-sm">
+                <span>⚔️ 攻撃力 <strong id="stat-attack" style="color:#ffd36e;">30</strong></span>
+                <span>🛡️ 防御力 <strong id="stat-defense" style="color:#8ee3ff;">12</strong></span>
+                <span>✨ 機嫌バフ <strong id="stat-mood-buff" style="color:#ff9cc8;">+24%</strong></span>
+                <span id="stat-equipment-summary" style="color:#d4dfef;">武器：なし / 盾：なし</span>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+                <button id="sound-toggle" onclick="toggleGameSound()" aria-pressed="true" title="効果音のON/OFF" style="background:#23634f;color:#eafff5;padding:8px 12px;border:2px solid #75e0b8;font-weight:bold;">🔊 音 ON</button>
+                <button onclick="openEquipment()" style="background:#9a7130;color:#fff4cc;padding:8px 14px;border:2px solid #f4d27c;font-weight:bold;">🎒 装備・持ち物</button>
+            </div>
+        </div>
+
+        <div id="notification-banner" class="bg-slate-700/60 border border-slate-600 px-4 py-2 rounded-xl text-center text-xs text-slate-300 font-medium">
+            💡 ダンジョンを進めて敵のレベルやドロップ装備をチェックしよう！
+        </div>
+    </footer>
+
+    <!-- Skill Book Modal -->
+    <div id="skill-book-modal" class="fixed inset-0 hidden items-center justify-center z-[95] p-4" style="background:rgba(8,15,29,.88);">
+        <div class="w-full max-w-3xl max-h-[90vh] overflow-y-auto" style="background:#243b58;border:4px solid #65d8f5;box-shadow:8px 8px 0 #101c30;color:#fff4cc;padding:20px;">
+            <div class="flex items-center justify-between gap-3 mb-2">
+                <div>
+                    <div style="font-family:'Press Start 2P',monospace;font-size:10px;color:#65d8f5;line-height:1.8;">PUNIMON SKILL BOOK</div>
+                    <h2 style="font-family:'DotGothic16',sans-serif;font-size:25px;font-weight:bold;">スキル図鑑</h2>
+                </div>
+                <button onclick="closeSkillBook()" style="background:#8d3546;color:white;padding:8px 12px;border:2px solid #ffb2b2;">とじる ✕</button>
+            </div>
+            <p id="skill-book-summary" class="text-sm mb-4" style="color:#c8d8eb;">レベルが上がると新しいスキルを覚えるよ。スキルはバトル中に自動で発動！</p>
+            <div id="skill-book-list" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
+            <div class="mt-4 text-xs" style="color:#9fb8d3;">スキルの発動には機嫌が必要。機嫌が高いと攻撃・防御も強化されるよ。</div>
+        </div>
+    </div>
+
+    <!-- Equipment Modal -->
+    <div id="equipment-modal" class="fixed inset-0 hidden items-center justify-center z-[90] p-4" style="background:rgba(8,15,29,.86);">
+        <div class="w-full max-w-2xl max-h-[90vh] overflow-y-auto" style="background:#243b58;border:4px solid #e0c77f;box-shadow:8px 8px 0 #101c30;color:#fff4cc;padding:20px;">
+            <div class="flex items-center justify-between gap-3 mb-3">
+                <div>
+                    <div style="font-family:'Press Start 2P',monospace;font-size:10px;color:#f4c85a;line-height:1.8;">EQUIPMENT</div>
+                    <h2 style="font-family:'DotGothic16',sans-serif;font-size:24px;font-weight:bold;">装備・持ち物</h2>
+                </div>
+                <button onclick="closeEquipment()" style="background:#8d3546;color:white;padding:8px 12px;border:2px solid #ffb2b2;">とじる ✕</button>
+            </div>
+            <p class="text-xs mb-4" style="color:#c8d8eb;">武器は攻撃力、盾は防御力を強化する。装備はいつでも変更できるよ。<br>🔨 同じ装備・同じレア度・同じ＋値を2個そろえて合成すると、＋1の強い装備になる（最大＋5）。</p>
+            <div id="equipment-current" class="mb-4 p-3" style="background:#152940;border:2px solid #8eb8d7;"></div>
+            <h3 style="font-weight:bold;font-size:16px;margin-bottom:8px;color:#f4c85a;">所持装備</h3>
+            <div id="equipment-inventory" class="flex flex-col gap-2"></div>
+            <div class="mt-4 text-xs" style="color:#9fb8d3;">レア度：★ コモン / ★★ レア / ★★★ エピック</div>
+        </div>
+    </div>
+
+    <!-- Custom Modal -->
+    <div id="custom-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md hidden items-center justify-center z-50 p-4">
+        <div class="bg-slate-900 border border-slate-700 p-6 rounded-3xl shadow-2xl max-w-sm w-full text-center flex flex-col items-center gap-4">
+            <div id="modal-icon" class="text-4xl">🏆</div>
+            <h3 id="modal-title" class="text-xl font-bold text-white">通知</h3>
+            <p id="modal-message" class="text-sm text-slate-300">メッセージ内容</p>
+            <button onclick="closeModal()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-2xl shadow-lg transition">OK</button>
+        </div>
+    </div>
+
+    <!-- Application Script -->
+    <script>
+        // --- Procedural retro-RPG sound effects (no external audio files required) ---
+        const GAME_SOUND_STORAGE_KEY = 'punimon_sound_enabled_v1';
+        let gameSoundEnabled = true;
+        let gameAudioContext = null;
+        let gameAudioMaster = null;
+
+        function syncSoundToggle() {
+            const button = document.getElementById('sound-toggle');
+            if (!button) return;
+            button.textContent = gameSoundEnabled ? '🔊 音 ON' : '🔇 音 OFF';
+            button.setAttribute('aria-pressed', String(gameSoundEnabled));
+            button.style.background = gameSoundEnabled ? '#23634f' : '#34435a';
+            button.style.borderColor = gameSoundEnabled ? '#75e0b8' : '#8ba0ba';
+            button.style.color = gameSoundEnabled ? '#eafff5' : '#d4dfef';
+        }
+
+        function initGameSoundPreference() {
+            try {
+                const saved = localStorage.getItem(GAME_SOUND_STORAGE_KEY);
+                if (saved === 'off') gameSoundEnabled = false;
+                else if (saved === 'on') gameSoundEnabled = true;
+            } catch (error) { /* Audio still works if storage is unavailable. */ }
+            syncSoundToggle();
+        }
+
+        function toggleGameSound() {
+            gameSoundEnabled = !gameSoundEnabled;
+            try { localStorage.setItem(GAME_SOUND_STORAGE_KEY, gameSoundEnabled ? 'on' : 'off'); }
+            catch (error) { /* The toggle remains usable for this session. */ }
+            syncSoundToggle();
+            if (gameSoundEnabled) playGameSound('ui');
+        }
+
+        function getGameAudioContext() {
+            if (!gameSoundEnabled) return null;
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContextClass) return null;
+            if (!gameAudioContext) {
+                gameAudioContext = new AudioContextClass();
+                gameAudioMaster = gameAudioContext.createGain();
+                gameAudioMaster.gain.value = 0.42;
+                gameAudioMaster.connect(gameAudioContext.destination);
+            }
+            return gameAudioContext;
+        }
+
+        function withGameAudio(callback) {
+            const ctx = getGameAudioContext();
+            if (!ctx) return;
+            const run = () => {
+                if (gameSoundEnabled && gameAudioContext === ctx) callback(ctx);
+            };
+            if (ctx.state === 'suspended') ctx.resume().then(run).catch(() => {});
+            else run();
+        }
+
+        function soundTone(ctx, frequency, duration, options = {}) {
+            const when = options.when ?? ctx.currentTime;
+            const volume = Math.max(0.0001, options.volume ?? 0.12);
+            const oscillator = ctx.createOscillator();
+            const gain = ctx.createGain();
+            oscillator.type = options.wave ?? 'triangle';
+            oscillator.frequency.setValueAtTime(Math.max(25, frequency), when);
+            if (options.endFrequency && options.endFrequency > 0) {
+                oscillator.frequency.exponentialRampToValueAtTime(Math.max(25, options.endFrequency), when + duration);
+            }
+            gain.gain.setValueAtTime(0.0001, when);
+            gain.gain.exponentialRampToValueAtTime(volume, when + Math.min(0.012, duration * 0.25));
+            gain.gain.exponentialRampToValueAtTime(0.0001, when + duration);
+            oscillator.connect(gain);
+            gain.connect(gameAudioMaster);
+            oscillator.start(when);
+            oscillator.stop(when + duration + 0.025);
+        }
+
+        function soundNoise(ctx, duration = 0.12, volume = 0.11, options = {}) {
+            const when = options.when ?? ctx.currentTime;
+            const sampleRate = ctx.sampleRate;
+            const frameCount = Math.max(1, Math.floor(sampleRate * duration));
+            const buffer = ctx.createBuffer(1, frameCount, sampleRate);
+            const channel = buffer.getChannelData(0);
+            for (let i = 0; i < frameCount; i++) {
+                const fade = 1 - i / frameCount;
+                channel[i] = (Math.random() * 2 - 1) * fade;
+            }
+            const source = ctx.createBufferSource();
+            const filter = ctx.createBiquadFilter();
+            const gain = ctx.createGain();
+            source.buffer = buffer;
+            filter.type = options.filterType ?? 'highpass';
+            filter.frequency.setValueAtTime(options.cutoff ?? 260, when);
+            gain.gain.setValueAtTime(0.0001, when);
+            gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, volume), when + 0.008);
+            gain.gain.exponentialRampToValueAtTime(0.0001, when + duration);
+            source.connect(filter);
+            filter.connect(gain);
+            gain.connect(gameAudioMaster);
+            source.start(when);
+            source.stop(when + duration + 0.02);
+        }
+
+        function playGameSound(kind, variant = '') {
+            withGameAudio(ctx => {
+                const t = ctx.currentTime + 0.012;
+                const note = (freq, dur = 0.11, delay = 0, wave = 'triangle', volume = 0.12, endFreq = 0) =>
+                    soundTone(ctx, freq, dur, { when: t + delay, wave, volume, endFrequency: endFreq });
+                const chord = (notes, step = 0.085, dur = 0.15, wave = 'triangle', volume = 0.10) =>
+                    notes.forEach((freq, i) => note(freq, dur, i * step, wave, volume));
+
+                switch (kind) {
+                    case 'ui':
+                        chord([740, 990], 0.045, 0.07, 'square', 0.045);
+                        break;
+                    case 'pet':
+                        chord([587, 784, 988], 0.075, 0.13, 'triangle', 0.07);
+                        break;
+                    case 'feed':
+                        chord([392, 494, 587, 784], 0.085, 0.16, 'sine', 0.085);
+                        note(1047, 0.18, 0.34, 'sine', 0.06);
+                        break;
+                    case 'play':
+                        chord([523, 659, 784, 659, 880], 0.095, 0.12, 'square', 0.055);
+                        break;
+                    case 'levelUp':
+                        chord([523, 659, 784, 1047, 1319], 0.12, 0.22, 'triangle', 0.105);
+                        chord([784, 988, 1175], 0.11, 0.20, 'sine', 0.07);
+                        note(1568, 0.34, 0.56, 'triangle', 0.10);
+                        break;
+                    case 'battleStart':
+                        soundNoise(ctx, 0.10, 0.08, { when: t, cutoff: 180, filterType: 'lowpass' });
+                        note(220, 0.18, 0.03, 'sawtooth', 0.08, 110);
+                        chord([330, 440, 554], 0.075, 0.13, 'square', 0.06);
+                        break;
+                    case 'bossStart':
+                        soundNoise(ctx, 0.23, 0.15, { when: t, cutoff: 140, filterType: 'lowpass' });
+                        note(110, 0.38, 0.01, 'sawtooth', 0.17, 42);
+                        note(165, 0.30, 0.16, 'square', 0.08, 82);
+                        note(220, 0.22, 0.39, 'triangle', 0.07);
+                        break;
+                    case 'attack':
+                        soundNoise(ctx, 0.09, 0.11, { when: t, cutoff: 550 });
+                        note(260, 0.12, 0.0, 'square', 0.08, 105);
+                        break;
+                    case 'enemyAttack':
+                        soundNoise(ctx, 0.14, 0.15, { when: t, cutoff: 240, filterType: 'lowpass' });
+                        note(155, 0.16, 0.0, 'sawtooth', 0.11, 68);
+                        break;
+                    case 'enemyDefeat':
+                        note(720, 0.08, 0.0, 'square', 0.07, 520);
+                        note(520, 0.14, 0.07, 'triangle', 0.07, 310);
+                        break;
+                    case 'skill':
+                        if (variant === 'skill-fire') {
+                            soundNoise(ctx, 0.18, 0.13, { when: t, cutoff: 380 });
+                            note(180, 0.28, 0.0, 'sawtooth', 0.12, 720);
+                            note(920, 0.11, 0.16, 'square', 0.07, 420);
+                        } else if (variant === 'skill-water') {
+                            chord([330, 440, 587, 659], 0.075, 0.20, 'sine', 0.08);
+                            note(880, 0.25, 0.26, 'sine', 0.07, 520);
+                        } else if (variant === 'skill-thunder') {
+                            soundNoise(ctx, 0.19, 0.15, { when: t, cutoff: 1000 });
+                            note(1500, 0.19, 0.0, 'sawtooth', 0.12, 140);
+                            note(880, 0.09, 0.10, 'square', 0.06, 260);
+                        } else if (variant === 'skill-meteor') {
+                            note(950, 0.30, 0.0, 'sawtooth', 0.11, 90);
+                            soundNoise(ctx, 0.20, 0.17, { when: t + 0.23, cutoff: 200, filterType: 'lowpass' });
+                            note(95, 0.25, 0.23, 'triangle', 0.12, 48);
+                        } else if (variant === 'skill-shadow') {
+                            note(210, 0.42, 0.0, 'sawtooth', 0.12, 46);
+                            note(155, 0.35, 0.11, 'triangle', 0.09, 75);
+                            soundNoise(ctx, 0.16, 0.08, { when: t + 0.16, cutoff: 480 });
+                        } else if (variant === 'skill-rainbow') {
+                            chord([523, 659, 784, 988, 1175, 1568], 0.075, 0.22, 'triangle', 0.09);
+                            note(1319, 0.32, 0.42, 'sine', 0.08);
+                        } else {
+                            chord([440, 660, 880], 0.07, 0.14, 'triangle', 0.08);
+                        }
+                        break;
+                    case 'waveClear':
+                        chord([523, 659, 784], 0.065, 0.12, 'triangle', 0.075);
+                        break;
+                    case 'victory':
+                        chord([523, 659, 784, 1047], 0.10, 0.22, 'square', 0.09);
+                        note(1319, 0.34, 0.46, 'triangle', 0.10);
+                        break;
+                    case 'defeat':
+                        note(392, 0.20, 0.0, 'triangle', 0.10, 330);
+                        note(330, 0.24, 0.17, 'triangle', 0.095, 262);
+                        note(262, 0.34, 0.38, 'sine', 0.10, 196);
+                        break;
+                    case 'equip':
+                        chord([660, 880, 1175], 0.065, 0.12, 'square', 0.06);
+                        break;
+                    case 'loot':
+                        chord([784, 988, 1175, 1568], 0.075, 0.17, 'sine', 0.08);
+                        break;
+                    case 'fuse':
+                        chord([330, 440, 587, 784, 1047], 0.085, 0.19, 'triangle', 0.10);
+                        note(1319, 0.25, 0.45, 'sine', 0.09);
+                        break;
+                    default:
+                        break;
+                }
+            });
+        }
+
+        // --- Equipment system ---
+        const gearCatalog = {
+            weapon: [
+                { id:'w1', name:'木のこんぼう', chapter:1, icon:'🪵' },
+                { id:'w2', name:'草原の剣', chapter:1, icon:'🌿' },
+                { id:'w3', name:'砂岩ブレード', chapter:2, icon:'🪨' },
+                { id:'w4', name:'炎晶剣', chapter:2, icon:'🔥' },
+                { id:'w5', name:'月影の魔剣', chapter:3, icon:'🌙' },
+                { id:'w6', name:'星霜の聖剣', chapter:3, icon:'✨' }
+            ],
+            shield: [
+                { id:'s1', name:'木の盾', chapter:1, icon:'🪵' },
+                { id:'s2', name:'若葉の盾', chapter:1, icon:'🍃' },
+                { id:'s3', name:'砂岩の大盾', chapter:2, icon:'🪨' },
+                { id:'s4', name:'火守りの盾', chapter:2, icon:'🔥' },
+                { id:'s5', name:'月影の盾', chapter:3, icon:'🌙' },
+                { id:'s6', name:'星霜の聖盾', chapter:3, icon:'✨' }
+            ]
+        };
+        const rarityInfo = {
+            common: { label:'コモン', stars:'★', bonus:0.10, color:'#d5dfeb' },
+            rare: { label:'レア', stars:'★★', bonus:0.25, color:'#6fd4ff' },
+            epic: { label:'エピック', stars:'★★★', bonus:0.45, color:'#d4a0ff' }
+        };
+        const rarityDropByChapter = {
+            1: ['common'],
+            2: ['common','rare'],
+            3: ['rare','epic']
+        };
+        const FUSION_RATE_PER_PLUS = 0.10;
+        const FUSION_MAX_PLUS = 5;
+        const gearState = {
+            inventory: [],
+            equipped: { weapon: null, shield: null },
+            nextId: 1
+        };
+
+        function gearByInstance(instanceId) {
+            return gearState.inventory.find(item => item.instanceId === instanceId) || null;
+        }
+        function gearBonus(item) {
+            return rarityInfo[item.rarity].bonus * (1 + FUSION_RATE_PER_PLUS * (item.plus || 0));
+        }
+        function gearName(item) {
+            return item.name + (item.plus ? `＋${item.plus}` : '');
+        }
+        function gearStats(slot) {
+            const base = slot === 'weapon' ? 25 + game.level * 5 : 10 + game.level * 2;
+            const item = gearByInstance(gearState.equipped[slot]);
+            const bonus = item ? gearBonus(item) : 0;
+            return { base, bonus, value: Math.round(base * (1 + bonus)), item };
+        }
+        // 機嫌0でバフなし、機嫌100で攻撃・防御が最大30%アップ
+        function getMoodBuffMultiplier() { return 1 + (game.mood / 100) * 0.30; }
+        function getMoodBuffPercent() { return Math.round(game.mood * 0.30); }
+        function getEffectiveAttack() { return Math.round(gearStats('weapon').value * getMoodBuffMultiplier()); }
+        function getEffectiveDefense() { return Math.round(gearStats('shield').value * getMoodBuffMultiplier()); }
+        function reduceDamageByDefense(rawDamage) {
+            const defense = getEffectiveDefense();
+            return Math.max(1, Math.round(rawDamage * 100 / (100 + defense)));
+        }
+        function addGearDrop(chapter) {
+            const candidates = ['weapon','shield'].flatMap(slot =>
+                gearCatalog[slot].filter(def => def.chapter === chapter).map(def => ({ ...def, slot }))
+            );
+            if (!candidates.length) return null;
+            const def = candidates[Math.floor(Math.random() * candidates.length)];
+            const rarities = rarityDropByChapter[chapter] || ['common'];
+            const rarity = rarities[Math.floor(Math.random() * rarities.length)];
+            const item = { ...def, instanceId: gearState.nextId++, rarity, plus: 0 };
+            gearState.inventory.push(item);
+            playGameSound('loot');
+            return item;
+        }
+        function gearDescription(item) {
+            const rarity = rarityInfo[item.rarity];
+            const base = item.slot === 'weapon' ? '攻撃力' : '防御力';
+            return `${item.icon} ${gearName(item)} ${rarity.stars} ${rarity.label}（${base} +${Math.round(gearBonus(item)*1000)/10}%）`;
+        }
+
+        function canFuseWith(a, b) {
+            return a.instanceId !== b.instanceId && a.id === b.id && a.rarity === b.rarity
+                && (a.plus || 0) === (b.plus || 0);
+        }
+        function findFusionPartner(item) {
+            if ((item.plus || 0) >= FUSION_MAX_PLUS) return null;
+            const partners = gearState.inventory.filter(other => canFuseWith(item, other));
+            return partners.find(o => gearState.equipped[o.slot] !== o.instanceId) || partners[0] || null;
+        }
+        function fuseItems(instanceId) {
+            const item = gearByInstance(instanceId);
+            if (!item) return;
+            const partner = findFusionPartner(item);
+            if (!partner) {
+                setNotification('⚠️ 合成できる相手がいません（同じ装備・同じレア度・同じ＋値が2個必要）');
+                return;
+            }
+            const wasEquipped = gearState.equipped[item.slot] === item.instanceId
+                || gearState.equipped[partner.slot] === partner.instanceId;
+            const before = gearDescription(item);
+            gearState.inventory = gearState.inventory.filter(i => i.instanceId !== item.instanceId && i.instanceId !== partner.instanceId);
+            const fused = { ...item, instanceId: gearState.nextId++, plus: (item.plus || 0) + 1 };
+            gearState.inventory.push(fused);
+            if (wasEquipped) gearState.equipped[fused.slot] = fused.instanceId;
+            renderEquipment();
+            updateUI();
+            setNotification(`🔨 合成成功！ ${gearName(fused)} が完成！（${before} → ${gearDescription(fused)}）`);
+            setSpeech(`「${gearName(fused)} ができたよ！ ちょっと強くなった！」`);
+            playGameSound('fuse');
+        }
+        function openEquipment() {
+            renderEquipment();
+            const modal = document.getElementById('equipment-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+        function closeEquipment() {
+            const modal = document.getElementById('equipment-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+        function equipItem(instanceId) {
+            const item = gearByInstance(instanceId);
+            if (!item) return;
+            gearState.equipped[item.slot] = item.instanceId;
+            renderEquipment();
+            updateUI();
+            setNotification(`装備変更：${gearName(item)} を装備した！`);
+            playGameSound('equip');
+        }
+        function renderEquipment() {
+            const current = document.getElementById('equipment-current');
+            const inv = document.getElementById('equipment-inventory');
+            const weapon = gearStats('weapon');
+            const shield = gearStats('shield');
+            current.innerHTML = `
+                <div style="font-weight:bold;margin-bottom:8px;color:#f4c85a;">現在の装備</div>
+                <div>⚔️ 武器：${weapon.item ? gearDescription(weapon.item) : 'なし'} <span style="color:#ffd36e;">（攻撃力 ${weapon.value}）</span></div>
+                <div>🛡️ 盾：${shield.item ? gearDescription(shield.item) : 'なし'} <span style="color:#8ee3ff;">（防御力 ${shield.value}）</span></div>
+                <div style="font-size:12px;color:#9fb8d3;margin-top:6px;">素の攻撃力 ${weapon.base} / 素の防御力 ${shield.base}</div>`;
+            inv.innerHTML = '';
+            if (!gearState.inventory.length) {
+                inv.innerHTML = '<div style="padding:14px;background:#152940;border:1px dashed #8eb8d7;">まだ装備を持っていないよ。バトルに勝って装備を集めよう！</div>';
+                return;
+            }
+            gearState.inventory.slice().reverse().forEach(item => {
+                const equipped = gearState.equipped[item.slot] === item.instanceId;
+                const rarity = rarityInfo[item.rarity];
+                const row = document.createElement('div');
+                row.style.cssText = `display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:10px;background:#152940;border:2px solid ${rarity.color};`;
+                const label = document.createElement('div');
+                label.style.cssText = 'min-width:0;flex:1;';
+                label.innerHTML = `<div style="font-weight:bold;color:${rarity.color};">${gearDescription(item)}</div><div style="font-size:12px;color:#9fb8d3;">${item.slot === 'weapon' ? '武器' : '盾'} • チャプター${item.chapter}の装備</div>`;
+                const thumb = document.createElement('img');
+                thumb.src = gearThumbURL(item);
+                thumb.alt = item.name;
+                thumb.style.cssText = `width:44px;height:44px;image-rendering:pixelated;border:2px solid ${rarity.color};flex:none;`;
+                row.appendChild(thumb);
+                row.appendChild(label);
+                const btnWrap = document.createElement('div');
+                btnWrap.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;';
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.textContent = equipped ? '装備中 ✓' : '装備する';
+                button.disabled = equipped;
+                button.style.cssText = `padding:7px 10px;background:${equipped ? '#386d55' : '#344d6b'};color:#fff4cc;border:2px solid ${rarity.color};`;
+                button.onclick = () => equipItem(item.instanceId);
+                btnWrap.appendChild(button);
+
+                const atMax = (item.plus || 0) >= FUSION_MAX_PLUS;
+                const canFuse = !atMax && !!findFusionPartner(item);
+                const fuseBtn = document.createElement('button');
+                fuseBtn.type = 'button';
+                fuseBtn.textContent = atMax ? '合成MAX' : '🔨 合成';
+                fuseBtn.disabled = !canFuse;
+                fuseBtn.title = atMax ? '＋値が上限です' : (canFuse ? '同じ装備2個を消費して＋1にする' : '同じ装備・同じレア度・同じ＋値がもう1個必要');
+                fuseBtn.style.cssText = `padding:7px 10px;background:${canFuse ? '#9a7130' : '#2a3a50'};color:${canFuse ? '#fff4cc' : '#7f93ab'};border:2px solid ${canFuse ? '#f4d27c' : '#4a5d78'};${canFuse ? '' : 'cursor:not-allowed;'}`;
+                fuseBtn.onclick = () => fuseItems(item.instanceId);
+                btnWrap.appendChild(fuseBtn);
+
+                row.appendChild(btnWrap);
+                inv.appendChild(row);
+            });
+        }
+
+        // --- Game State ---
+        const game = {
+            name: "ぷに太",
+            level: 1,
+            exp: 0,
+            nextExp: 100,
+            hunger: 80,
+            mood: 80,
+            hp: 100,
+            maxHp: 100,
+            gold: 500,
+            mode: 'RAISE',
+            isDefending: false,
+            enemy: {
+                name: "ワルプラズマ",
+                level: 2,
+                hp: 100,
+                maxHp: 100,
+                atk: 15
+            }
+        };
+
+        // --- Skills ---
+        // Damage multipliers apply to the pet's normal attack after equipment and mood buffs.
+        const skillCatalog = [
+            { id:'flare', name:'ぷにぷにフレア', icon:'🔥', unlockLevel:1, target:'single', multiplier:1.8, moodCost:10, motion:'skill-fire', color:0xff6a2a, typeLabel:'単体攻撃', description:'炎をまとった体当たり。1体に大ダメージ。', motionLabel:'炎をまとって跳びこむ' },
+            { id:'aqua', name:'アクアスプラッシュ', icon:'💧', unlockLevel:3, target:'all', multiplier:0.85, moodCost:12, motion:'skill-water', color:0x35c9ff, typeLabel:'全体攻撃', description:'水の輪を広げて、敵全員をまとめて攻撃。', motionLabel:'高く跳ねて水の輪を放つ' },
+            { id:'spark', name:'スパークボルト', icon:'⚡', unlockLevel:5, target:'single', multiplier:2.15, moodCost:14, motion:'skill-thunder', color:0xffed57, typeLabel:'単体攻撃', description:'雷の一撃で相手をしびれさせる強力な技。', motionLabel:'一瞬ためて稲妻のように突進' },
+            { id:'meteor', name:'メテオぷに', icon:'☄️', unlockLevel:10, target:'all', multiplier:1.15, moodCost:18, motion:'skill-meteor', color:0xff8a3d, typeLabel:'全体攻撃', description:'空から降る星の力で、敵全員を攻撃。', motionLabel:'宙返りから流星のポーズ' },
+            { id:'shadow', name:'シャドウバースト', icon:'🌑', unlockLevel:15, target:'single', multiplier:2.65, moodCost:20, motion:'skill-shadow', color:0xa78bfa, typeLabel:'単体攻撃', description:'影のエネルギーを一点に集中させて爆発させる。', motionLabel:'身を低くしてから闇の力を解放' },
+            { id:'rainbow', name:'レインボーノヴァ', icon:'🌈', unlockLevel:20, target:'all', multiplier:1.4, moodCost:24, motion:'skill-rainbow', color:0xff73ce, typeLabel:'全体攻撃', description:'七色の光が弾け、敵全員に大きなダメージ。', motionLabel:'回転しながら光をまとって大ジャンプ' }
+        ];
+
+        function openSkillBook() {
+            renderSkillBook();
+            const modal = document.getElementById('skill-book-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeSkillBook() {
+            const modal = document.getElementById('skill-book-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function renderSkillBook() {
+            const list = document.getElementById('skill-book-list');
+            const summary = document.getElementById('skill-book-summary');
+            if (!list || !summary) return;
+            const learned = skillCatalog.filter(skill => game.level >= skill.unlockLevel).length;
+            summary.textContent = `ぷに太 Lv.${game.level}｜習得済み ${learned}/${skillCatalog.length} 種。スキルはバトル中に自動発動し、使用すると機嫌を消費するよ。`;
+            list.innerHTML = '';
+            skillCatalog.forEach(skill => {
+                const unlocked = game.level >= skill.unlockLevel;
+                const card = document.createElement('section');
+                card.style.cssText = `padding:12px;background:${unlocked ? 'rgba(9,30,51,.92)' : 'rgba(15,23,42,.55)'};border:2px solid ${unlocked ? '#65d8f5' : '#53657c'};opacity:${unlocked ? '1' : '.76'};`;
+                const top = document.createElement('div');
+                top.style.cssText = 'display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px;';
+                const title = document.createElement('div');
+                title.style.cssText = `font-size:16px;font-weight:bold;color:${unlocked ? '#fff4cc' : '#a9b8cb'};`;
+                title.textContent = `${skill.icon} ${skill.name}`;
+                const status = document.createElement('span');
+                status.style.cssText = `font-size:11px;white-space:nowrap;padding:3px 6px;border:1px solid ${unlocked ? '#4ade80' : '#64748b'};color:${unlocked ? '#86efac' : '#cbd5e1'};`;
+                status.textContent = unlocked ? '習得済み' : `Lv.${skill.unlockLevel}で習得`;
+                top.append(title, status);
+                const tags = document.createElement('div');
+                tags.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;margin-bottom:7px;font-size:11px;';
+                const tag1 = document.createElement('span');
+                tag1.style.cssText = `padding:3px 6px;background:${skill.target === 'all' ? 'rgba(96,165,250,.18)' : 'rgba(248,113,113,.16)'};color:${skill.target === 'all' ? '#93c5fd' : '#fca5a5'};`;
+                tag1.textContent = skill.typeLabel;
+                const tag2 = document.createElement('span');
+                tag2.style.cssText = 'padding:3px 6px;background:rgba(244,200,90,.14);color:#f4c85a;';
+                tag2.textContent = `威力 ${Math.round(skill.multiplier * 100)}%`;
+                const tag3 = document.createElement('span');
+                tag3.style.cssText = 'padding:3px 6px;background:rgba(244,114,182,.14);color:#f9a8d4;';
+                tag3.textContent = `機嫌 -${skill.moodCost}`;
+                tags.append(tag1, tag2, tag3);
+                const desc = document.createElement('p');
+                desc.style.cssText = 'font-size:12px;line-height:1.65;color:#c8d8eb;margin-bottom:6px;';
+                desc.textContent = skill.description;
+                const motion = document.createElement('p');
+                motion.style.cssText = 'font-size:11px;line-height:1.5;color:#8bdcf5;';
+                motion.textContent = `🎬 専用モーション：${skill.motionLabel}`;
+                card.append(top, tags, desc, motion);
+                list.appendChild(card);
+            });
+        }
+
+        // --- Three.js Setup ---
+        let scene, camera, renderer, controls, petGroup, enemyGroup;
+        let raisingGround, raisingDecorations, raisingSkyTexture;
+        let battleBackground = new THREE.Color(0x0f172a);
+        let battleGround = null;
+        let currentStage = { chapter: 1, stage: 1, id: '1-1' };
+        const clearedStages = new Set();
+        const INFINITE_RECORD_KEY = 'punimonInfiniteDungeonRecordsV1';
+        const INFINITE_NAME_KEY = 'punimonInfiniteDungeonPlayerNameV1';
+        const infiniteRun = { active: false, floor: 1, score: 0, totalKills: 0, startedAt: 0 };
+        let enemyParty = [];
+        let minionGroups = [];
+        let clock = new THREE.Clock();
+        let animationState = 'idle';
+        let animTimer = 0;
+        let autoBattleTimer = 0;
+        let battleEnding = false;
+        const battleBounds = { minX: -3.2, maxX: 1.2, minZ: -1.8, maxZ: 1.8 };
+        const battleMoveSpeed = 2.8;
+        const heldKeys = new Set();
+
+        let wanderTarget = new THREE.Vector3(0, -0.2, 0);
+        let wanderTimer = 0;
+        let isWaiting = false;
+        const wanderSpeed = 1.2;
+
+        function initThree() {
+            const container = document.getElementById('canvas-container');
+            
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x8fd5ff, 0.012);
+            createRaisingEnvironment();
+            scene.background = raisingSkyTexture;
+
+            camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+            camera.position.set(0, 3, 7);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            container.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.minDistance = 3;
+            controls.maxDistance = 12;
+            controls.maxPolarAngle = Math.PI / 2 - 0.05;
+            controls.enablePan = false;
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+            dirLight.position.set(5, 10, 7);
+            dirLight.castShadow = true;
+            scene.add(dirLight);
+
+            const pointLight = new THREE.PointLight(0x6366f1, 2, 10);
+            pointLight.position.set(0, -1, 3);
+            scene.add(pointLight);
+
+            petGroup = createProceduralPet();
+            scene.add(petGroup);
+
+            enemyGroup = createProceduralEnemy();
+            enemyGroup.visible = false;
+            scene.add(enemyGroup);
+
+            setNewWanderTarget();
+            window.addEventListener('resize', onWindowResize);
+            animate();
+        }
+
+        function createRaisingEnvironment() {
+            const skyCanvas = document.createElement('canvas');
+            skyCanvas.width = 1024;
+            skyCanvas.height = 512;
+            const skyCtx = skyCanvas.getContext('2d');
+            const skyGradient = skyCtx.createLinearGradient(0, 0, 0, 512);
+            skyGradient.addColorStop(0, '#0878dc');
+            skyGradient.addColorStop(0.48, '#48b5ff');
+            skyGradient.addColorStop(0.82, '#a5e2ff');
+            skyGradient.addColorStop(1, '#e7faff');
+            skyCtx.fillStyle = skyGradient;
+            skyCtx.fillRect(0, 0, 1024, 512);
+            for (const cloud of [{x:80,y:115,s:0.8},{x:220,y:155,s:0.72},{x:430,y:82,s:0.9},{x:610,y:205,s:0.48},{x:760,y:130,s:1.0},{x:940,y:72,s:0.7},{x:320,y:275,s:0.45},{x:1010,y:235,s:0.5}]) {
+                skyCtx.save();
+                skyCtx.translate(cloud.x, cloud.y);
+                skyCtx.scale(cloud.s, cloud.s);
+                const puffs = [[0,10,36],[30,-4,31],[63,8,38],[92,15,25],[35,18,33]];
+                for (const [x,y,r] of puffs) {
+                    const g = skyCtx.createRadialGradient(x-8,y-8,2,x,y,r*1.2);
+                    g.addColorStop(0, 'rgba(255,255,255,0.96)');
+                    g.addColorStop(0.72, 'rgba(255,255,255,0.88)');
+                    g.addColorStop(1, 'rgba(255,255,255,0)');
+                    skyCtx.fillStyle = g;
+                    skyCtx.beginPath();
+                    skyCtx.arc(x,y,r*1.2,0,Math.PI*2);
+                    skyCtx.fill();
+                }
+                skyCtx.restore();
+            }
+            raisingSkyTexture = new THREE.CanvasTexture(skyCanvas);
+            raisingSkyTexture.colorSpace = THREE.SRGBColorSpace;
+
+            const grassCanvas = document.createElement('canvas');
+            grassCanvas.width = 512;
+            grassCanvas.height = 512;
+            const grassCtx = grassCanvas.getContext('2d');
+            const grassGradient = grassCtx.createLinearGradient(0, 0, 512, 512);
+            grassGradient.addColorStop(0, '#58bd43');
+            grassGradient.addColorStop(0.45, '#3eaa38');
+            grassGradient.addColorStop(1, '#258c32');
+            grassCtx.fillStyle = grassGradient;
+            grassCtx.fillRect(0, 0, 512, 512);
+            for (let i = 0; i < 220; i++) {
+                const x = Math.random() * 512;
+                const y = Math.random() * 512;
+                const r = 8 + Math.random() * 32;
+                grassCtx.fillStyle = Math.random() > 0.5
+                    ? 'rgba(178,230,92,0.09)' : 'rgba(8,91,31,0.10)';
+                grassCtx.beginPath();
+                grassCtx.ellipse(x, y, r * 1.35, r * 0.72, Math.random() * Math.PI, 0, Math.PI * 2);
+                grassCtx.fill();
+            }
+            for (let i = 0; i < 19000; i++) {
+                const x = Math.random() * 512;
+                const y = Math.random() * 512;
+                const light = Math.random();
+                grassCtx.strokeStyle = light > 0.53 ? 'rgba(205,247,129,0.43)' : 'rgba(10,91,31,0.34)';
+                grassCtx.lineWidth = 0.6 + Math.random() * 1.1;
+                grassCtx.beginPath();
+                grassCtx.moveTo(x, y);
+                grassCtx.lineTo(x + (Math.random() - 0.5) * 5, y - 2 - Math.random() * 8);
+                grassCtx.stroke();
+            }
+            const grassTexture = new THREE.CanvasTexture(grassCanvas);
+            grassTexture.wrapS = THREE.RepeatWrapping;
+            grassTexture.wrapT = THREE.RepeatWrapping;
+            grassTexture.repeat.set(11, 11);
+            grassTexture.colorSpace = THREE.SRGBColorSpace;
+            grassTexture.anisotropy = 4;
+
+            raisingGround = new THREE.Mesh(
+                new THREE.PlaneGeometry(200, 200),
+                new THREE.MeshStandardMaterial({ map: grassTexture, roughness: 1, metalness: 0 })
+            );
+            raisingGround.rotation.x = -Math.PI / 2;
+            raisingGround.position.y = -1.24;
+            raisingGround.receiveShadow = true;
+            scene.add(raisingGround);
+
+            raisingDecorations = new THREE.Group();
+
+            const hillMatA = new THREE.MeshStandardMaterial({ color: 0x63c94e, roughness: 1, fog: true });
+            const hillMatB = new THREE.MeshStandardMaterial({ color: 0x8bd66c, roughness: 1, fog: true });
+            const hills = [
+                { x: -12, y: -0.7, z: -19, sx: 10, sy: 2.2, sz: 3.5, mat: hillMatA },
+                { x: 1, y: -0.9, z: -23, sx: 13, sy: 2.8, sz: 4.0, mat: hillMatB },
+                { x: 15, y: -0.7, z: -20, sx: 11, sy: 2.0, sz: 3.5, mat: hillMatA }
+            ];
+            for (const h of hills) {
+                const hill = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), h.mat);
+                hill.position.set(h.x, h.y, h.z);
+                hill.scale.set(h.sx, h.sy, h.sz);
+                hill.receiveShadow = true;
+                raisingDecorations.add(hill);
+            }
+
+            const flowerColors = [0xffffff, 0xffe66d, 0xff8fc7, 0xbca7ff];
+            for (let i = 0; i < 95; i++) {
+                const x = (Math.random() - 0.5) * 22;
+                const z = (Math.random() - 0.5) * 18;
+                if (Math.abs(x) < 1.5 && Math.abs(z) < 1.5) continue;
+                const flower = new THREE.Group();
+                const stem = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.012, 0.018, 0.18, 5),
+                    new THREE.MeshStandardMaterial({ color: 0x247b2e, roughness: 1 })
+                );
+                stem.position.y = 0.09;
+                flower.add(stem);
+                const bloom = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.055, 8, 6),
+                    new THREE.MeshStandardMaterial({ color: flowerColors[Math.floor(Math.random() * flowerColors.length)], roughness: 0.8 })
+                );
+                bloom.position.y = 0.2;
+                bloom.scale.set(1, 0.7, 1);
+                flower.add(bloom);
+                flower.position.set(x, -1.23, z);
+                flower.scale.setScalar(0.65 + Math.random() * 0.8);
+                raisingDecorations.add(flower);
+            }
+
+            const tuftMat = new THREE.MeshStandardMaterial({ color: 0x2f9639, roughness: 1 });
+            for (let i = 0; i < 90; i++) {
+                const x = (Math.random() - 0.5) * 24;
+                const z = (Math.random() - 0.5) * 20;
+                if (Math.abs(x) < 1.15 && Math.abs(z) < 1.2) continue;
+                const tuft = new THREE.Group();
+                for (let blade = 0; blade < 3; blade++) {
+                    const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.22 + Math.random() * 0.12, 5), tuftMat);
+                    leaf.position.set((blade - 1) * 0.055, 0.1, (Math.random() - 0.5) * 0.06);
+                    leaf.rotation.z = (blade - 1) * 0.22;
+                    tuft.add(leaf);
+                }
+                tuft.position.set(x, -1.22, z);
+                tuft.scale.setScalar(0.65 + Math.random() * 0.9);
+                raisingDecorations.add(tuft);
+            }
+
+            scene.add(raisingDecorations);
+        }
+
+        function makeBattleSkyTexture(chapter) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            const themes = {
+                1: { top: '#5ab5ed', bottom: '#f8dc9a', hill: '#537b54', hill2: '#88a86b', sun: '#fff1a8' },
+                2: { top: '#e98a4b', bottom: '#f8d58a', hill: '#8f4e35', hill2: '#c17b48', sun: '#fff0bc' },
+                3: { top: '#171c4d', bottom: '#5c4b8d', hill: '#202b55', hill2: '#35466f', sun: '#d9e8ff' }
+            };
+            const t = themes[chapter] || themes[1];
+            const grad = ctx.createLinearGradient(0, 0, 0, 512);
+            grad.addColorStop(0, t.top);
+            grad.addColorStop(1, t.bottom);
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, 1024, 512);
+
+            if (chapter === 1) {
+                ctx.fillStyle = 'rgba(255,255,255,.75)';
+                [[120,105],[390,75],[750,125],[900,80]].forEach(([x,y]) => {
+                    ctx.fillRect(x,y,70,18); ctx.fillRect(x+18,y-14,38,14);
+                    ctx.fillRect(x+30,y+18,48,10);
+                });
+            } else if (chapter === 2) {
+                ctx.fillStyle = t.hill;
+                ctx.fillRect(0,285,1024,227);
+                [[20,190,180,150],[245,235,170,105],[520,165,210,175],[805,220,190,120]].forEach(([x,y,w,h]) => {
+                    ctx.fillRect(x,y,w,h); ctx.fillRect(x+25,y-20,w-50,20);
+                });
+                ctx.fillStyle = 'rgba(255,210,150,.35)';
+                for (let i=0;i<12;i++) ctx.fillRect(i*95,320+(i%3)*24,60,5);
+            } else {
+                for (let i=0;i<130;i++) {
+                    const x=(i*137)%1024, y=(i*67)%290;
+                    ctx.fillStyle = i%4===0 ? '#dceaff' : 'rgba(255,255,255,.7)';
+                    ctx.fillRect(x,y, i%5===0 ? 4 : 2, i%5===0 ? 4 : 2);
+                }
+                ctx.fillStyle = t.hill;
+                ctx.fillRect(0,330,1024,182);
+                [[100,235,55,130],[130,210,18,155],[690,250,70,100],[720,220,18,130],[870,260,50,90]].forEach(([x,y,w,h]) => ctx.fillRect(x,y,w,h));
+                ctx.fillStyle = '#b9c9f4';
+                ctx.beginPath(); ctx.arc(820,105,35,0,Math.PI*2); ctx.fill();
+                ctx.fillStyle = t.top; ctx.beginPath(); ctx.arc(835,92,32,0,Math.PI*2); ctx.fill();
+            }
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.colorSpace = THREE.SRGBColorSpace;
+            return texture;
+        }
+
+        function ensureBattleGround() {
+            if (battleGround) return;
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            for (let y=0; y<256; y+=16) {
+                for (let x=0; x<256; x+=16) {
+                    ctx.fillStyle = ((x+y)/16)%2 === 0 ? '#8bbf63' : '#7eae58';
+                    ctx.fillRect(x,y,16,16);
+                }
+            }
+            for (let i=0;i<900;i++) {
+                ctx.fillStyle = i%2 ? 'rgba(255,255,255,.08)' : 'rgba(30,60,20,.10)';
+                ctx.fillRect(Math.random()*256,Math.random()*256,2,2);
+            }
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(8,8); tex.colorSpace = THREE.SRGBColorSpace;
+            battleGround = new THREE.Mesh(
+                new THREE.PlaneGeometry(200,200),
+                new THREE.MeshStandardMaterial({ map: tex, roughness: 1, metalness: 0 })
+            );
+            battleGround.rotation.x = -Math.PI/2;
+            battleGround.position.y = -1.245;
+            battleGround.receiveShadow = true;
+            battleGround.visible = false;
+            scene.add(battleGround);
+        }
+
+        function setBattleChapterEnvironment(chapter) {
+            if (!scene) return;
+            ensureBattleGround();
+            const palettes = {
+                1: { fog: 0xb4d9e7, ground: 0x83b85d },
+                2: { fog: 0xe8b17a, ground: 0xc58a53 },
+                3: { fog: 0x4c507f, ground: 0x343e66 }
+            };
+            const palette = palettes[chapter] || palettes[1];
+            scene.background = makeBattleSkyTexture(chapter);
+            scene.fog = new THREE.FogExp2(palette.fog, chapter === 3 ? 0.018 : 0.012);
+            battleGround.material.color.setHex(palette.ground);
+            battleGround.visible = true;
+            document.getElementById('canvas-container').classList.remove('from-sky-300', 'to-sky-100', 'from-slate-800', 'to-slate-900');
+            document.getElementById('canvas-container').style.background = chapter === 1
+                ? 'linear-gradient(#65b9ee,#f7dca0)'
+                : chapter === 2 ? 'linear-gradient(#e98a4b,#f8d58a)' : 'linear-gradient(#171c4d,#5c4b8d)';
+        }
+
+        // --- Infinite Dungeon: local leaderboard and endless waves ---
+        function loadInfiniteRecords() {
+            try {
+                const rows = JSON.parse(localStorage.getItem(INFINITE_RECORD_KEY) || '[]');
+                if (!Array.isArray(rows)) return [];
+                return rows.filter(row => row && Number.isFinite(Number(row.score)) && Number.isFinite(Number(row.floorReached)))
+                    .sort((a, b) => Number(b.score) - Number(a.score)).slice(0, 10);
+            } catch (error) {
+                return [];
+            }
+        }
+
+        function renderInfiniteRecords() {
+            const list = document.getElementById('infinite-record-list');
+            if (!list) return;
+            list.innerHTML = '';
+            const rows = loadInfiniteRecords();
+            if (!rows.length) {
+                const empty = document.createElement('div');
+                empty.style.cssText = 'padding:14px;background:#152940;border:1px dashed #54789a;color:#9fb8d3;font-size:12px;';
+                empty.textContent = 'まだ記録がないよ。最初のハイスコアを目指そう！';
+                list.appendChild(empty);
+                return;
+            }
+            rows.forEach((record, index) => {
+                const row = document.createElement('div');
+                row.className = 'infinite-record-row';
+                const left = document.createElement('div');
+                left.style.cssText = 'min-width:0;';
+                const name = document.createElement('div');
+                name.style.cssText = `font-weight:bold;color:${index === 0 ? '#f4c85a' : '#fff4cc'};overflow-wrap:anywhere;`;
+                name.textContent = `${index + 1}. ${String(record.name || 'ぷに太').slice(0, 12)}`;
+                const detail = document.createElement('div');
+                detail.style.cssText = 'font-size:10px;color:#9fb8d3;margin-top:2px;';
+                detail.textContent = `${record.date || ''} ・ ${Math.max(0, Number(record.completedFloors) || 0)}波踏破`;
+                left.append(name, detail);
+                const score = document.createElement('strong');
+                score.style.cssText = 'color:#86efac;white-space:nowrap;font-size:13px;';
+                score.textContent = Number(record.score).toLocaleString('ja-JP');
+                row.append(left, score);
+                list.appendChild(row);
+            });
+        }
+
+        function openInfiniteDungeonMenu() {
+            const modal = document.getElementById('infinite-menu-overlay');
+            const nameInput = document.getElementById('infinite-player-name');
+            try {
+                const savedName = localStorage.getItem(INFINITE_NAME_KEY);
+                if (savedName && nameInput) nameInput.value = savedName;
+            } catch (error) { /* localStorage can be unavailable in private browsing */ }
+            renderInfiniteRecords();
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeInfiniteDungeonMenu() {
+            const modal = document.getElementById('infinite-menu-overlay');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function updateInfiniteHud() {
+            const hud = document.getElementById('infinite-run-hud');
+            if (!hud) return;
+            if (infiniteRun.active) {
+                hud.classList.remove('hidden');
+                document.getElementById('infinite-floor-hud').textContent = infiniteRun.floor.toLocaleString('ja-JP');
+                document.getElementById('infinite-score-hud').textContent = infiniteRun.score.toLocaleString('ja-JP');
+            } else {
+                hud.classList.add('hidden');
+            }
+        }
+
+        function startInfiniteDungeon() {
+            if (game.hp <= 0) {
+                setNotification('⚠️ ぷに太のHPが0だよ！ごはんをあげてHPを回復してから挑もう！');
+                closeInfiniteDungeonMenu();
+                return;
+            }
+            const nameInput = document.getElementById('infinite-player-name');
+            const playerName = (nameInput && nameInput.value.trim() ? nameInput.value.trim() : 'ぷに太').slice(0, 12);
+            try { localStorage.setItem(INFINITE_NAME_KEY, playerName); } catch (error) { /* name is still usable for this run */ }
+            infiniteRun.active = true;
+            infiniteRun.floor = 1;
+            infiniteRun.score = 0;
+            infiniteRun.totalKills = 0;
+            infiniteRun.startedAt = Date.now();
+            closeInfiniteDungeonMenu();
+            updateInfiniteHud();
+            setNotification('♾️ 無限ダンジョン開始！敵は倒すたびに強くなる。どこまで進めるかな？');
+            launchInfiniteFloor();
+        }
+
+        function launchInfiniteFloor() {
+            if (!infiniteRun.active) return;
+            const floor = infiniteRun.floor;
+            const chapter = Math.min(3, Math.floor((floor - 1) / 10) + 1);
+            const stage = ((floor - 1) % 10) + 1;
+            startBattle(chapter, stage);
+        }
+
+        function clearInfiniteFloor() {
+            if (!infiniteRun.active) return;
+            const clearedFloor = infiniteRun.floor;
+            const defeatedCount = enemyParty.filter(enemy => !enemy.alive || enemy.hp <= 0).length;
+            const isBoss = clearedFloor % 10 === 0;
+            const points = 100 + clearedFloor * 25 + defeatedCount * 20 + (isBoss ? clearedFloor * 250 : 0);
+            infiniteRun.score += points;
+            infiniteRun.totalKills += defeatedCount;
+
+            const rewardGold = Math.max(10, Math.round(clearedFloor * 8));
+            const rewardExp = Math.max(10, Math.round(clearedFloor * 15));
+            game.gold += rewardGold;
+            game.exp += rewardExp;
+            let levelsGained = 0;
+            while (game.exp >= game.nextExp) {
+                game.exp -= game.nextExp;
+                game.level++;
+                game.nextExp = Math.floor(game.nextExp * 1.5);
+                game.maxHp = 100 + (game.level - 1) * 20;
+                game.hp = Math.min(game.maxHp, game.hp + 20);
+                levelsGained++;
+            }
+            if (levelsGained > 0) playGameSound('levelUp');
+            else playGameSound(isBoss ? 'victory' : 'waveClear');
+
+            let droppedGear = null;
+            if (isBoss && Math.random() < 0.75) {
+                const chapter = Math.min(3, Math.floor((clearedFloor - 1) / 10) + 1);
+                droppedGear = addGearDrop(chapter);
+                if (droppedGear) renderEquipment();
+            }
+
+            updateUI();
+            updateInfiniteHud();
+            const levelText = levelsGained ? ` / Lv.+${levelsGained}` : '';
+            const gearText = droppedGear ? ` / 装備 ${gearName(droppedGear)}` : '';
+            document.getElementById('battle-turn-text').textContent = `第${clearedFloor}波 CLEAR!`;
+            document.getElementById('battle-commands').textContent = `✨ +${points.toLocaleString('ja-JP')} SCORE`;
+            appendBattleLog(`第${clearedFloor}波突破！ +${points.toLocaleString('ja-JP')} SCORE`);
+            setNotification(`♾️ 第${clearedFloor}波突破！ SCORE ${infiniteRun.score.toLocaleString('ja-JP')} / 報酬 ${rewardGold}G・EXP+${rewardExp}${levelText}${gearText}`);
+            infiniteRun.floor++;
+            setTimeout(() => {
+                if (infiniteRun.active && game.mode === 'BATTLE') launchInfiniteFloor();
+            }, 1100);
+        }
+
+        function finishInfiniteRun() {
+            const floorReached = infiniteRun.floor;
+            const score = infiniteRun.score;
+            let playerName = 'ぷに太';
+            const nameInput = document.getElementById('infinite-player-name');
+            if (nameInput && nameInput.value.trim()) playerName = nameInput.value.trim().slice(0, 12);
+            try {
+                const savedName = localStorage.getItem(INFINITE_NAME_KEY);
+                if (savedName && (!nameInput || !nameInput.value.trim())) playerName = savedName;
+            } catch (error) { /* use fallback name */ }
+
+            const record = {
+                name: playerName,
+                score,
+                floorReached,
+                completedFloors: Math.max(0, floorReached - 1),
+                defeated: infiniteRun.totalKills,
+                date: new Date().toLocaleDateString('ja-JP')
+            };
+            let records = loadInfiniteRecords();
+            records.push(record);
+            records.sort((a, b) => Number(b.score) - Number(a.score));
+            const rank = records.findIndex(item => item === record) + 1;
+            records = records.slice(0, 10);
+            try { localStorage.setItem(INFINITE_RECORD_KEY, JSON.stringify(records)); } catch (error) { /* run result still shown */ }
+            infiniteRun.active = false;
+            updateInfiniteHud();
+            return { ...record, rank: rank > 10 ? 0 : rank };
+        }
+
+        // Normal dungeon progression: each stage requires the immediately previous stage to be cleared.
+        // Stage 1-1 is always available. Infinite Dungeon bypasses this rule entirely.
+        function isStageUnlocked(chapter, stage) {
+            const stageNumber = (Number(chapter) - 1) * 10 + Number(stage);
+            if (!Number.isInteger(stageNumber) || stageNumber < 1 || stageNumber > 30) return false;
+            if (stageNumber === 1) return true;
+
+            const previousNumber = stageNumber - 1;
+            const previousChapter = Math.floor((previousNumber - 1) / 10) + 1;
+            const previousStage = ((previousNumber - 1) % 10) + 1;
+            return clearedStages.has(`${previousChapter}-${previousStage}`);
+        }
+
+        function openStageSelect() {
+            const overlay = document.getElementById('stage-select-overlay');
+            const chapters = document.getElementById('stage-chapters');
+            const themes = {
+                1: { title: 'CHAPTER 1 — 初心者の森 (Lv.1 - 10)', subtitle: 'スライムやゴブリンが棲みつく入門ダンジョン', color: '#75bd68' },
+                2: { title: 'CHAPTER 2 — 灼熱の荒野 (Lv.11 - 20)', subtitle: '熱気漂う凶暴な魔物の巣窟', color: '#df965b' },
+                3: { title: 'CHAPTER 3 — 深淵の迷宮 (Lv.21 - 30)', subtitle: '強大な魔力が渦巻く最難関エリア', color: '#7f88dc' }
+            };
+            chapters.innerHTML = '';
+            for (let chapter=1; chapter<=3; chapter++) {
+                const section = document.createElement('section');
+                section.style.cssText = `border:2px solid ${themes[chapter].color};padding:12px;background:rgba(7,17,32,.35);`;
+                const title = document.createElement('div');
+                title.style.cssText = `font-weight:bold;color:${themes[chapter].color};font-size:17px;margin-bottom:2px;`;
+                title.textContent = themes[chapter].title;
+                section.appendChild(title);
+                const subtitle = document.createElement('div');
+                subtitle.style.cssText = 'font-size:12px;color:#c8d8eb;margin-bottom:10px;';
+                subtitle.textContent = themes[chapter].subtitle;
+                section.appendChild(subtitle);
+                const grid = document.createElement('div');
+                grid.style.cssText = 'display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;';
+                for (let stage=1; stage<=10; stage++) {
+                    const id = `${chapter}-${stage}`;
+                    const lvl = (chapter - 1) * 10 + stage;
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    const cleared = clearedStages.has(id);
+                    const unlocked = isStageUnlocked(chapter, stage);
+                    btn.style.cssText = `padding:10px 3px;background:${cleared ? '#386d55' : unlocked ? '#344d6b' : '#202c3d'};color:${unlocked ? '#fff4cc' : '#8091a5'};border:2px solid ${cleared ? '#75bd68' : themes[chapter].color};font-weight:bold;font-size:13px;min-width:0;cursor:${unlocked ? 'pointer' : 'not-allowed'};opacity:${unlocked ? '1' : '.72'};`;
+                    btn.textContent = `${id} (Lv.${lvl})${stage === 10 ? ' 👑' : ''}${cleared ? ' ✓' : !unlocked ? ' 🔒' : ''}`;
+                    btn.disabled = !unlocked;
+                    btn.title = cleared ? '攻略済み。再挑戦できます' : unlocked ? '挑戦できます' : 'ひとつ前のステージをクリアすると解放';
+                    btn.setAttribute('aria-label', `${stage === 10 ? 'ボスステージ' : 'ステージ'} ${id}${unlocked ? '' : '（未解放）'}`);
+                    btn.onclick = () => {
+                        if (!isStageUnlocked(chapter, stage)) {
+                            setNotification('🔒 ひとつ前のステージをクリアすると挑戦できるよ！');
+                            return;
+                        }
+                        closeStageSelect();
+                        startBattle(chapter, stage);
+                    };
+                    grid.appendChild(btn);
+                }
+                section.appendChild(grid);
+                chapters.appendChild(section);
+            }
+            overlay.classList.remove('hidden');
+            overlay.classList.add('flex');
+        }
+
+        function closeStageSelect() {
+            const overlay = document.getElementById('stage-select-overlay');
+            overlay.classList.add('hidden');
+            overlay.classList.remove('flex');
+        }
+
+        function setRaisingEnvironment(active) {
+            if (raisingGround) raisingGround.visible = active;
+            if (raisingDecorations) raisingDecorations.visible = active;
+            if (battleGround) battleGround.visible = !active;
+            if (active) {
+                scene.background = raisingSkyTexture;
+                scene.fog = new THREE.FogExp2(0x8fd5ff, 0.012);
+                document.getElementById('canvas-container').classList.remove('from-slate-800', 'to-slate-900');
+                document.getElementById('canvas-container').classList.add('from-sky-300', 'to-sky-100');
+            } else {
+                scene.background = battleBackground;
+                scene.fog = new THREE.FogExp2(0x0f172a, 0.05);
+                document.getElementById('canvas-container').classList.remove('from-sky-300', 'to-sky-100');
+                document.getElementById('canvas-container').classList.add('from-slate-800', 'to-slate-900');
+            }
+        }
+
+        function setNewWanderTarget() {
+            const rx = (Math.random() - 0.5) * 5.0;
+            const rz = (Math.random() - 0.5) * 4.0;
+            wanderTarget.set(rx, -0.2, rz);
+            isWaiting = false;
+        }
+
+        // --- Procedural 3D Pet Model ---
+        function createProceduralPet() {
+            const group = new THREE.Group();
+
+            const bodyGeo = new THREE.SphereGeometry(1, 32, 32);
+            const bodyMat = new THREE.MeshStandardMaterial({ 
+                color: 0x6366f1, 
+                roughness: 0.3, 
+                metalness: 0.2,
+                emissive: 0x1e1b4b
+            });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.castShadow = true;
+            group.add(body);
+
+            const eyeGeo = new THREE.SphereGeometry(0.18, 16, 16);
+            const eyeMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.1 });
+            
+            const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+            leftEye.position.set(0.35, 0.3, 0.85);
+            group.add(leftEye);
+
+            const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
+            rightEye.position.set(-0.35, 0.3, 0.85);
+            group.add(rightEye);
+
+            const highGeo = new THREE.SphereGeometry(0.06, 8, 8);
+            const highMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            
+            const leftHigh = new THREE.Mesh(highGeo, highMat);
+            leftHigh.position.set(0.4, 0.38, 0.95);
+            group.add(leftHigh);
+
+            const rightHigh = new THREE.Mesh(highGeo, highMat);
+            rightHigh.position.set(-0.3, 0.38, 0.95);
+            group.add(rightHigh);
+
+            const cheekGeo = new THREE.SphereGeometry(0.15, 16, 16);
+            const cheekMat = new THREE.MeshStandardMaterial({ color: 0xf43f5e, roughness: 0.5 });
+            
+            const leftCheek = new THREE.Mesh(cheekGeo, cheekMat);
+            leftCheek.position.set(0.6, 0.05, 0.75);
+            group.add(leftCheek);
+
+            const rightCheek = new THREE.Mesh(cheekGeo, cheekMat);
+            rightCheek.position.set(-0.6, 0.05, 0.75);
+            group.add(rightCheek);
+
+            const hornGeo = new THREE.ConeGeometry(0.2, 0.5, 16);
+            const hornMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.5, roughness: 0.2 });
+            const horn = new THREE.Mesh(hornGeo, hornMat);
+            horn.position.set(0, 1.15, 0);
+            group.add(horn);
+
+            const equipGroup = new THREE.Group();
+            group.add(equipGroup);
+            group.userData.equip = equipGroup;
+
+            group.position.set(0, -0.2, 0);
+            return group;
+        }
+
+        // --- Equipment visual & textures ---
+        const gearLook = {
+            w1: { kind:'club',  tex:'wood' },
+            w2: { kind:'sword', tex:'leaf' },
+            w3: { kind:'sword', tex:'sand' },
+            w4: { kind:'sword', tex:'flame' },
+            w5: { kind:'sword', tex:'moon' },
+            w6: { kind:'sword', tex:'star' },
+            s1: { kind:'round', tex:'wood' },
+            s2: { kind:'leaf',  tex:'leaf' },
+            s3: { kind:'tower', tex:'sand' },
+            s4: { kind:'round', tex:'flame' },
+            s5: { kind:'round', tex:'moon' },
+            s6: { kind:'hex',   tex:'star' }
+        };
+        const gearPalettes = {
+            wood:  ['#4a2c14','#7a4f27','#9a6a38','#c99a5e'],
+            leaf:  ['#14532d','#1f8a3f','#4ade80','#d9f99d'],
+            sand:  ['#6e4a22','#b7793f','#e0a864','#f5deb3'],
+            flame: ['#7f1d1d','#dc2626','#fb923c','#fde047'],
+            moon:  ['#0b1230','#1e2a6b','#4f5fd1','#eef2ff'],
+            star:  ['#7a5200','#d9a21b','#ffe066','#ffffff']
+        };
+        const gearCanvasCache = {};
+        const gearTextureCache = {};
+
+        function gearNoise(x, y, seed) {
+            const v = Math.sin(x * 12.9898 + y * 78.233 + seed * 37.719) * 43758.5453;
+            return v - Math.floor(v);
+        }
+        function gearPixelIndex(tex, x, y) {
+            const n = gearNoise(x, y, 1);
+            if (x < 1 || y < 1 || x > 30 || y > 30) return 0;
+            switch (tex) {
+                case 'wood': {
+                    const row = (y + Math.floor(gearNoise(x >> 3, y >> 1, 2) * 2)) % 5;
+                    if (n > 0.93) return 3;
+                    if (row === 0) return 0;
+                    return row < 3 ? 1 : 2;
+                }
+                case 'leaf': {
+                    if (x === 15 || x === 16) return 3;
+                    if ((y + Math.abs(x - 15.5)) % 8 < 1) return 2;
+                    return n < 0.15 ? 0 : (n > 0.7 ? 2 : 1);
+                }
+                case 'sand': {
+                    if (n > 0.9) return 3;
+                    if (n < 0.1) return 0;
+                    return [1, 2, 1][(y >> 2) % 3];
+                }
+                case 'flame': {
+                    const t = (1 - y / 31) + (n - 0.5) * 0.35 + Math.sin(x * 0.9) * 0.12;
+                    return t < 0.25 ? 3 : t < 0.5 ? 2 : t < 0.8 ? 1 : 0;
+                }
+                case 'moon': {
+                    const d1 = Math.hypot(x - 15, y - 16);
+                    const d2 = Math.hypot(x - 19, y - 14);
+                    if (d1 < 9 && d2 >= 8) return 3;
+                    if (n > 0.965) return 3;
+                    return n > 0.5 ? 1 : (y > 20 ? 1 : 0);
+                }
+                case 'star': {
+                    const dx = Math.abs(x - 15.5), dy = Math.abs(y - 15.5);
+                    if (dx + dy < 4) return 3;
+                    if ((dx < 1.2 && dy < 12) || (dy < 1.2 && dx < 12)) return 2;
+                    if (n > 0.95) return 3;
+                    return ((x + y) % 6 < 3) ? 1 : 2;
+                }
+            }
+            return 1;
+        }
+        function getGearCanvas(texKey) {
+            if (gearCanvasCache[texKey]) return gearCanvasCache[texKey];
+            const canvas = document.createElement('canvas');
+            canvas.width = 32; canvas.height = 32;
+            const ctx = canvas.getContext('2d');
+            const colors = gearPalettes[texKey] || gearPalettes.wood;
+            for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
+                ctx.fillStyle = colors[gearPixelIndex(texKey, x, y)];
+                ctx.fillRect(x, y, 1, 1);
+            }
+            gearCanvasCache[texKey] = canvas;
+            return canvas;
+        }
+        function getGearTexture(texKey) {
+            if (!gearTextureCache[texKey]) {
+                const texture = new THREE.CanvasTexture(getGearCanvas(texKey));
+                texture.magFilter = THREE.NearestFilter;
+                texture.minFilter = THREE.NearestFilter;
+                gearTextureCache[texKey] = texture;
+            }
+            return gearTextureCache[texKey];
+        }
+        function gearThumbURL(item) {
+            const look = gearLook[item.id];
+            return look ? getGearCanvas(look.tex).toDataURL() : '';
+        }
+
+        function buildGearMesh(item) {
+            const look = gearLook[item.id];
+            if (!look) return null;
+            const rarityGlow = { common: 0x000000, rare: 0x0a3a5c, epic: 0x4a1d7a }[item.rarity] || 0x000000;
+            const mat = new THREE.MeshStandardMaterial({
+                map: getGearTexture(look.tex),
+                roughness: 0.45, metalness: 0.25,
+                emissive: rarityGlow,
+                emissiveIntensity: 0.6 + 0.25 * (item.plus || 0)
+            });
+            const darkMat = new THREE.MeshStandardMaterial({ color: 0x3b2a1a, roughness: 0.7 });
+            const g = new THREE.Group();
+            const add = (mesh, x = 0, y = 0, z = 0) => { mesh.position.set(x, y, z); mesh.castShadow = true; g.add(mesh); return mesh; };
+
+            if (look.kind === 'club') {
+                add(new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.1, 1.3, 12), mat), 0, 0.5, 0);
+            } else if (look.kind === 'sword') {
+                add(new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.0, 0.05), mat), 0, 0.7, 0);
+                const tip = new THREE.Mesh(new THREE.ConeGeometry(0.113, 0.25, 4), mat);
+                tip.rotation.y = Math.PI / 4; tip.scale.z = 0.35;
+                add(tip, 0, 1.325, 0);
+                add(new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 0.1), mat), 0, 0.15, 0);
+                add(new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.35, 8), darkMat), 0, -0.05, 0);
+                add(new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 8), mat), 0, -0.25, 0);
+            } else if (look.kind === 'round' || look.kind === 'hex') {
+                const seg = look.kind === 'hex' ? 6 : 24;
+                const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.62, 0.12, seg), mat);
+                disc.rotation.x = Math.PI / 2;
+                add(disc);
+                const rim = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.05, 8, seg), new THREE.MeshStandardMaterial({ color: 0xd4a73a, metalness: 0.6, roughness: 0.3 }));
+                add(rim, 0, 0, 0.04);
+            } else if (look.kind === 'leaf') {
+                const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.6, 16, 12), mat);
+                leaf.scale.set(0.75, 1.0, 0.2);
+                add(leaf);
+            } else if (look.kind === 'tower') {
+                add(new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.2, 0.12), mat));
+            }
+            const scale = 1 + 0.04 * (item.plus || 0);
+            g.scale.setScalar(scale);
+            return { group: g, kind: look.kind };
+        }
+
+        let petEquipSig = '-|-';
+        function syncPetEquipmentVisual() {
+            if (!petGroup || !petGroup.userData.equip) return;
+            const weapon = gearByInstance(gearState.equipped.weapon);
+            const shield = gearByInstance(gearState.equipped.shield);
+            const sig = [weapon, shield].map(it => it ? `${it.id}:${it.rarity}:${it.plus || 0}` : '-').join('|');
+            if (sig === petEquipSig) return;
+            petEquipSig = sig;
+
+            const holder = petGroup.userData.equip;
+            while (holder.children.length) {
+                const child = holder.children[0];
+                holder.remove(child);
+                child.traverse(o => {
+                    if (o.geometry) o.geometry.dispose();
+                    if (o.material) o.material.dispose();
+                });
+            }
+            const handMat = new THREE.MeshStandardMaterial({ color: 0x6366f1, roughness: 0.3, metalness: 0.2, emissive: 0x1e1b4b });
+            const addHand = (x, y, z) => {
+                const hand = new THREE.Mesh(new THREE.SphereGeometry(0.22, 16, 16), handMat);
+                hand.position.set(x, y, z);
+                holder.add(hand);
+            };
+            if (weapon) {
+                const built = buildGearMesh(weapon);
+                if (built) {
+                    built.group.position.set(-1.15, -0.1, 0.35);
+                    built.group.rotation.set(0.2, 0, 0.3);
+                    holder.add(built.group);
+                    addHand(-1.05, -0.1, 0.4);
+                }
+            }
+            if (shield) {
+                const built = buildGearMesh(shield);
+                if (built) {
+                    built.group.position.set(1.05, 0.0, 0.5);
+                    built.group.rotation.set(0, 0.5, 0);
+                    holder.add(built.group);
+                    addHand(0.9, 0.0, 0.4);
+                }
+            }
+            if ((weapon || shield) && game.mode === 'RAISE') pulseEnemyGroup(petGroup, 'attack');
+        }
+
+        // --- Character-specific 3D enemy models + pixel textures ---
+        // Textures are painted onto Canvas at runtime, keeping this HTML self-contained.
+        const enemyTextureCache = Object.create(null);
+        const enemyTexturePalettes = {
+            slime: {
+                gel: ['#075985', '#0284c7', '#38bdf8', '#dff8ff'], skin: ['#075985', '#0284c7', '#38bdf8', '#dff8ff'],
+                cloth: ['#164e63', '#0e7490', '#22d3ee', '#cffafe'], stone: ['#334155', '#64748b', '#94a3b8', '#dbeafe']
+            },
+            ember: {
+                gel: ['#7f1d1d', '#b91c1c', '#f97316', '#fde047'], skin: ['#7f1d1d', '#b91c1c', '#f97316', '#fde047'],
+                cloth: ['#431407', '#9a3412', '#ea580c', '#fdba74'], stone: ['#431407', '#7f1d1d', '#c2410c', '#f97316'], lava: ['#290b0b', '#991b1b', '#f97316', '#fef08a']
+            },
+            shadow: {
+                gel: ['#17143e', '#312e81', '#6d28d9', '#ddd6fe'], skin: ['#17143e', '#312e81', '#6d28d9', '#ddd6fe'],
+                cloth: ['#111827', '#312e81', '#4c1d95', '#a78bfa'], stone: ['#1e1b4b', '#3730a3', '#6366f1', '#c4b5fd']
+            },
+            frost: {
+                gel: ['#164e63', '#0891b2', '#67e8f9', '#ecfeff'], skin: ['#164e63', '#0891b2', '#67e8f9', '#ecfeff'],
+                cloth: ['#172554', '#1d4ed8', '#60a5fa', '#dbeafe'], stone: ['#334155', '#64748b', '#bae6fd', '#f0f9ff']
+            },
+            goblin: {
+                gel: ['#365314', '#4d7c0f', '#84cc16', '#d9f99d'], skin: ['#365314', '#4d7c0f', '#84cc16', '#d9f99d'],
+                cloth: ['#292524', '#78350f', '#a16207', '#d6a65d'], stone: ['#44403c', '#78716c', '#a8a29e', '#d6d3d1']
+            },
+            goblinEmber: {
+                gel: ['#365314', '#4d7c0f', '#a3a34a', '#fde68a'], skin: ['#365314', '#4d7c0f', '#a3a34a', '#fde68a'],
+                cloth: ['#431407', '#9a3412', '#c2410c', '#fdba74'], stone: ['#431407', '#7c2d12', '#c2410c', '#fed7aa']
+            },
+            goblinShadow: {
+                gel: ['#164e63', '#155e75', '#0f766e', '#99f6e4'], skin: ['#164e63', '#155e75', '#0f766e', '#99f6e4'],
+                cloth: ['#111827', '#312e81', '#581c87', '#c4b5fd'], stone: ['#1e293b', '#334155', '#475569', '#94a3b8']
+            },
+            goblinFrost: {
+                gel: ['#334155', '#64748b', '#7dd3fc', '#f0f9ff'], skin: ['#334155', '#64748b', '#7dd3fc', '#f0f9ff'],
+                cloth: ['#172554', '#1e40af', '#2563eb', '#bfdbfe'], stone: ['#334155', '#64748b', '#bae6fd', '#f0f9ff']
+            },
+            rock: {
+                gel: ['#3f3f46', '#71717a', '#a1a1aa', '#d4d4d8'], skin: ['#3f3f46', '#71717a', '#a1a1aa', '#d4d4d8'],
+                cloth: ['#292524', '#57534e', '#78716c', '#a8a29e'], stone: ['#292524', '#57534e', '#78716c', '#d6d3d1']
+            },
+            boss1: {
+                gel: ['#064e3b', '#047857', '#34d399', '#fef3c7'], skin: ['#064e3b', '#047857', '#34d399', '#fef3c7'],
+                cloth: ['#713f12', '#a16207', '#eab308', '#fef08a'], stone: ['#365314', '#4d7c0f', '#84cc16', '#fef08a']
+            },
+            boss2: {
+                gel: ['#431407', '#7f1d1d', '#ea580c', '#fde047'], skin: ['#431407', '#7f1d1d', '#ea580c', '#fde047'],
+                cloth: ['#292524', '#57534e', '#a16207', '#fbbf24'], stone: ['#292524', '#57534e', '#a16207', '#fbbf24'], lava: ['#1c0808', '#991b1b', '#f97316', '#fef08a']
+            },
+            boss3: {
+                gel: ['#111827', '#312e81', '#7e22ce', '#f5d0fe'], skin: ['#111827', '#312e81', '#7e22ce', '#f5d0fe'],
+                cloth: ['#09090b', '#18181b', '#3b0764', '#a855f7'], stone: ['#18181b', '#27272a', '#52525b', '#c084fc']
+            }
+        };
+
+        function enemyPalette(style, surface) {
+            const palette = enemyTexturePalettes[style] || enemyTexturePalettes.slime;
+            if (surface === 'lava' && palette.lava) return palette.lava;
+            return palette[surface] || palette.gel || palette.skin;
+        }
+
+        function createEnemyPixelTexture(style = 'slime', surface = 'gel') {
+            const cacheKey = `${style}:${surface}`;
+            if (enemyTextureCache[cacheKey]) return enemyTextureCache[cacheKey];
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            const colors = enemyPalette(style, surface);
+            ctx.fillStyle = colors[0];
+            ctx.fillRect(0, 0, 128, 128);
+
+            // A deterministic chunky pixel pattern, with different visual language per material.
+            for (let y = 0; y < 128; y += 8) {
+                for (let x = 0; x < 128; x += 8) {
+                    const wave = Math.sin((x + 13) * 0.17) + Math.cos((y + 7) * 0.21) + Math.sin((x + y) * 0.07);
+                    let ci = wave > 1.0 ? 3 : wave > 0.15 ? 2 : wave > -0.8 ? 1 : 0;
+                    if (surface === 'cloth' && ((x / 8 + y / 8) % 4 === 0)) ci = 0;
+                    if (surface === 'stone' && ((x * 3 + y * 5) % 29 < 8)) ci = 1;
+                    ctx.fillStyle = colors[ci];
+                    ctx.fillRect(x, y, 8, 8);
+                }
+            }
+
+            if (surface === 'gel') {
+                // Glossy bubbles and highlights read clearly on round slime bodies.
+                for (let i = 0; i < 12; i++) {
+                    const x = 12 + ((i * 37) % 104);
+                    const y = 12 + ((i * 53) % 100);
+                    const r = 3 + (i % 3) * 2;
+                    ctx.fillStyle = i % 3 === 0 ? colors[3] : colors[2];
+                    ctx.fillRect(x, y, r, r);
+                    ctx.fillStyle = 'rgba(255,255,255,.72)';
+                    ctx.fillRect(x, y, Math.max(2, Math.floor(r / 2)), 2);
+                }
+                ctx.fillStyle = 'rgba(255,255,255,.82)';
+                ctx.fillRect(18, 17, 15, 5);
+                ctx.fillRect(18, 22, 7, 4);
+                ctx.fillStyle = 'rgba(255,255,255,.35)';
+                ctx.fillRect(91, 78, 8, 8);
+            } else if (surface === 'skin') {
+                // Speckles and cheek-like patches make organic monsters less synthetic.
+                for (let i = 0; i < 26; i++) {
+                    const x = (i * 31 + 9) % 120;
+                    const y = (i * 47 + 13) % 120;
+                    ctx.fillStyle = colors[i % 4];
+                    ctx.fillRect(x, y, 4 + (i % 2) * 4, 4);
+                }
+                ctx.fillStyle = 'rgba(255,255,255,.20)';
+                ctx.fillRect(20, 17, 20, 4);
+            } else if (surface === 'cloth') {
+                // Stitched seams and a belt-like stripe.
+                ctx.fillStyle = colors[0];
+                ctx.fillRect(0, 76, 128, 12);
+                ctx.fillStyle = colors[3];
+                for (let x = 8; x < 128; x += 16) ctx.fillRect(x, 80, 6, 3);
+                ctx.fillStyle = 'rgba(255,230,170,.65)';
+                ctx.fillRect(57, 75, 14, 14);
+            } else if (surface === 'stone') {
+                // Pixel cracks and moss flecks on rocky enemies.
+                ctx.fillStyle = colors[0];
+                ctx.fillRect(28, 20, 8, 24); ctx.fillRect(36, 36, 16, 8);
+                ctx.fillRect(76, 68, 8, 20); ctx.fillRect(60, 84, 16, 8);
+                ctx.fillStyle = colors[3];
+                ctx.fillRect(12, 14, 12, 5); ctx.fillRect(84, 28, 18, 5);
+                if (style === 'rock' || style === 'boss2') {
+                    ctx.fillStyle = '#4d7c0f';
+                    ctx.fillRect(10, 103, 18, 7); ctx.fillRect(91, 17, 15, 6);
+                }
+            } else if (surface === 'lava') {
+                ctx.fillStyle = colors[0];
+                for (let i = 0; i < 8; i++) {
+                    const x = (i * 19 + 8) % 120;
+                    const y = (i * 27 + 3) % 120;
+                    ctx.fillStyle = colors[2];
+                    ctx.fillRect(x, y, 5, 22);
+                    ctx.fillRect(x - 4, y + 13, 13, 5);
+                    ctx.fillStyle = colors[3];
+                    ctx.fillRect(x + 1, y + 3, 2, 8);
+                }
+            }
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.magFilter = THREE.NearestFilter;
+            texture.minFilter = THREE.NearestMipmapNearestFilter;
+            texture.colorSpace = THREE.SRGBColorSpace;
+            enemyTextureCache[cacheKey] = texture;
+            return texture;
+        }
+
+        function enemyTexturedMaterial(style, surface = 'gel', options = {}) {
+            return new THREE.MeshStandardMaterial({
+                map: createEnemyPixelTexture(style, surface),
+                color: 0xffffff,
+                roughness: surface === 'gel' ? 0.28 : 0.82,
+                metalness: surface === 'stone' ? 0.08 : 0,
+                ...options
+            });
+        }
+
+        function enemyPlainMaterial(color, options = {}) {
+            return new THREE.MeshStandardMaterial({ color, roughness: 0.72, ...options });
+        }
+
+        function enemyMesh(group, geometry, material, position, scale = null, rotation = null) {
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.position.set(position[0], position[1], position[2]);
+            if (scale) mesh.scale.set(scale[0], scale[1], scale[2]);
+            if (rotation) mesh.rotation.set(rotation[0], rotation[1], rotation[2]);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            group.add(mesh);
+            return mesh;
+        }
+
+        function clearEnemyModel(group) {
+            while (group.children.length) {
+                const child = group.children[0];
+                group.remove(child);
+                child.traverse(object => {
+                    if (object.geometry) object.geometry.dispose();
+                    if (object.material) {
+                        if (Array.isArray(object.material)) object.material.forEach(mat => mat.dispose());
+                        else object.material.dispose();
+                    }
+                });
+            }
+        }
+
+        function addSlimeFace(group, scale = 1) {
+            const eyeWhite = enemyPlainMaterial('#f8fafc', { roughness: 0.24 });
+            const pupils = enemyPlainMaterial('#082f49', { roughness: 0.15 });
+            const sparkle = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const cheeks = enemyPlainMaterial('#fb7185', { transparent: true, opacity: 0.72 });
+            for (const side of [-1, 1]) {
+                enemyMesh(group, new THREE.SphereGeometry(0.135 * scale, 12, 10), eyeWhite,
+                    [side * 0.27 * scale, 0.15 * scale, 0.66 * scale]);
+                enemyMesh(group, new THREE.SphereGeometry(0.064 * scale, 10, 8), pupils,
+                    [side * 0.27 * scale, 0.145 * scale, 0.775 * scale]);
+                enemyMesh(group, new THREE.SphereGeometry(0.025 * scale, 8, 6), sparkle,
+                    [side * 0.29 * scale, 0.18 * scale, 0.82 * scale]);
+                enemyMesh(group, new THREE.SphereGeometry(0.08 * scale, 10, 8), cheeks,
+                    [side * 0.46 * scale, -0.045 * scale, 0.63 * scale]);
+            }
+            enemyMesh(group, new THREE.BoxGeometry(0.17 * scale, 0.025 * scale, 0.025 * scale),
+                enemyPlainMaterial('#164e63'), [0, -0.115 * scale, 0.75 * scale]);
+        }
+
+        function buildSlimeEnemy(group, style) {
+            const isBoss = style === 'boss1';
+            const isEmber = style === 'ember';
+            const isShadow = style === 'shadow';
+            const isFrost = style === 'frost';
+            const body = enemyMesh(group, new THREE.SphereGeometry(0.88, 24, 18),
+                enemyTexturedMaterial(style, 'gel', { emissive: isEmber ? 0x541000 : isShadow ? 0x16083a : isFrost ? 0x002c3c : 0x001b32, emissiveIntensity: 0.12 }),
+                [0, 0.00, 0], [1.08, 0.82, 0.92]);
+            body.userData.enemyBody = true;
+            addSlimeFace(group, isBoss ? 1.22 : 1);
+
+            if (isBoss) {
+                // King Slime: a readable gold crown, gem and little crown points.
+                const gold = enemyPlainMaterial('#fbbf24', { metalness: 0.58, roughness: 0.28 });
+                enemyMesh(group, new THREE.CylinderGeometry(0.39, 0.46, 0.12, 7), gold, [0, 0.69, 0]);
+                enemyMesh(group, new THREE.CylinderGeometry(0.29, 0.40, 0.25, 7), gold, [0, 0.81, 0]);
+                for (let i = 0; i < 5; i++) {
+                    const x = (i - 2) * 0.17;
+                    enemyMesh(group, new THREE.ConeGeometry(0.09, 0.22, 4), gold, [x, 0.98 - Math.abs(i - 2) * 0.025, 0]);
+                }
+                enemyMesh(group, new THREE.OctahedronGeometry(0.095, 0), enemyPlainMaterial('#ef4444', { emissive: 0x7f1d1d }), [0, 0.84, 0.39]);
+                enemyMesh(group, new THREE.SphereGeometry(0.11, 12, 10), enemyPlainMaterial('#a7f3d0', { emissive: 0x34d399, emissiveIntensity: 0.3 }), [-0.64, 0.47, 0.18]);
+                enemyMesh(group, new THREE.SphereGeometry(0.11, 12, 10), enemyPlainMaterial('#a7f3d0', { emissive: 0x34d399, emissiveIntensity: 0.3 }), [0.64, 0.47, 0.18]);
+            } else if (isEmber || isShadow || isFrost) {
+                // Small elemental crystals distinguish the chapter variants at a glance.
+                const crystalColor = isEmber ? '#fde047' : isShadow ? '#c4b5fd' : '#ecfeff';
+                const crystalGlow = isEmber ? 0xf97316 : isShadow ? 0x7c3aed : 0x67e8f9;
+                for (let i = 0; i < 3; i++) {
+                    enemyMesh(group, new THREE.OctahedronGeometry(0.12 + i * 0.015, 0),
+                        enemyPlainMaterial(crystalColor, { emissive: crystalGlow, emissiveIntensity: 0.42, metalness: 0.18 }),
+                        [(i - 1) * 0.42, 0.54 + (i % 2) * 0.1, -0.05], [0.85, 1.4, 0.85], [0, 0, (i - 1) * 0.25]);
+                }
+            }
+        }
+
+        function buildGoblinEnemy(group, style) {
+            const frost = style === 'goblinFrost';
+            const shadow = style === 'goblinShadow' || style === 'boss3';
+            const ember = style === 'goblinEmber';
+            const boss = style === 'boss3';
+            const skinStyle = style;
+            const skin = enemyTexturedMaterial(skinStyle, 'skin', { roughness: 0.88 });
+            const cloth = enemyTexturedMaterial(skinStyle, 'cloth', { roughness: 0.95 });
+            const dark = enemyPlainMaterial(shadow ? '#171329' : '#422b22');
+            const boots = enemyPlainMaterial('#292524');
+            const eye = enemyPlainMaterial(frost ? '#e0f2fe' : '#fef08a', { emissive: shadow ? 0x7c3aed : ember ? 0xf97316 : 0x000000, emissiveIntensity: shadow ? 0.65 : ember ? 0.45 : 0.05 });
+            const pupil = enemyPlainMaterial('#111827');
+            const bodyScale = boss ? 1.22 : 1;
+
+            // Stocky torso, head, expressive pointed ears and face.
+            enemyMesh(group, new THREE.DodecahedronGeometry(0.52 * bodyScale, 0), cloth,
+                [0, -0.22, 0], [1.05, 1.20, 0.78]);
+            enemyMesh(group, new THREE.SphereGeometry(0.50 * bodyScale, 18, 14), skin,
+                [0, 0.52 * bodyScale, 0.03]);
+            for (const side of [-1, 1]) {
+                enemyMesh(group, new THREE.ConeGeometry(0.19 * bodyScale, 0.58 * bodyScale, 4), skin,
+                    [side * 0.56 * bodyScale, 0.65 * bodyScale, 0], [1, 1, 0.62], [0, 0, side * -Math.PI / 2.25]);
+                enemyMesh(group, new THREE.SphereGeometry(0.115 * bodyScale, 10, 8), eye,
+                    [side * 0.20 * bodyScale, 0.57 * bodyScale, 0.44 * bodyScale]);
+                enemyMesh(group, new THREE.SphereGeometry(0.055 * bodyScale, 8, 6), pupil,
+                    [side * 0.20 * bodyScale, 0.56 * bodyScale, 0.535 * bodyScale]);
+                enemyMesh(group, new THREE.BoxGeometry(0.25 * bodyScale, 0.075 * bodyScale, 0.07), dark,
+                    [side * 0.20 * bodyScale, 0.73 * bodyScale, 0.42 * bodyScale], null, [0, 0, side * -0.16]);
+            }
+            enemyMesh(group, new THREE.SphereGeometry(0.13 * bodyScale, 10, 8), skin, [0, 0.39 * bodyScale, 0.50 * bodyScale], [1, 0.8, 0.8]);
+            enemyMesh(group, new THREE.BoxGeometry(0.24 * bodyScale, 0.035, 0.035), dark, [0, 0.22 * bodyScale, 0.43 * bodyScale]);
+
+            // Arms and legs are separate parts so the character silhouette is not a recolored ball.
+            for (const side of [-1, 1]) {
+                enemyMesh(group, new THREE.CylinderGeometry(0.14, 0.18, 0.58, 7), skin,
+                    [side * 0.58 * bodyScale, -0.20, 0.02], [1, 1, 1], [0, 0, side * -0.48]);
+                enemyMesh(group, new THREE.SphereGeometry(0.16, 10, 8), skin,
+                    [side * 0.78 * bodyScale, -0.43, 0.13]);
+                enemyMesh(group, new THREE.CylinderGeometry(0.13, 0.15, 0.40, 6), skin,
+                    [side * 0.24 * bodyScale, -0.78, 0.01]);
+                enemyMesh(group, new THREE.BoxGeometry(0.30, 0.18, 0.34), boots,
+                    [side * 0.25 * bodyScale, -0.99, 0.10]);
+            }
+            enemyMesh(group, new THREE.BoxGeometry(0.72 * bodyScale, 0.11, 0.48), dark, [0, -0.47, 0.02]);
+            enemyMesh(group, new THREE.BoxGeometry(0.15, 0.16, 0.055), enemyPlainMaterial('#fbbf24', { metalness: 0.5 }), [0, -0.47, 0.28]);
+
+            // Signature weapon: a chunky wooden club with a few stone studs.
+            enemyMesh(group, new THREE.CylinderGeometry(0.055, 0.09, 0.74, 7), enemyPlainMaterial('#854d0e'), [0.96, -0.03, 0.18], [1, 1, 1], [0, 0, -0.55]);
+            enemyMesh(group, new THREE.DodecahedronGeometry(0.20, 0), enemyPlainMaterial(ember ? '#f97316' : shadow ? '#a78bfa' : frost ? '#bfdbfe' : '#a16207'),
+                [1.15, 0.29, 0.18], [1, 0.92, 0.9]);
+            for (let i = 0; i < 3; i++) {
+                enemyMesh(group, new THREE.ConeGeometry(0.045, 0.15, 4), enemyPlainMaterial('#d6d3d1'),
+                    [1.05 + i * 0.12, 0.34 + (i % 2) * 0.06, 0.31], [1, 1, 1], [0, 0, (i - 1) * 0.3]);
+            }
+
+            if (boss) {
+                const violet = enemyPlainMaterial('#a855f7', { emissive: 0x6b21a8, emissiveIntensity: 0.7, metalness: 0.25 });
+                enemyMesh(group, new THREE.ConeGeometry(0.20, 0.60, 5), violet, [-0.28, 1.15, -0.02], [1, 1.2, 1], [0, 0, 0.22]);
+                enemyMesh(group, new THREE.ConeGeometry(0.20, 0.60, 5), violet, [0.28, 1.15, -0.02], [1, 1.2, 1], [0, 0, -0.22]);
+                enemyMesh(group, new THREE.BoxGeometry(0.46, 0.09, 0.14), enemyPlainMaterial('#f5d0fe', { emissive: 0xa855f7, emissiveIntensity: 0.55 }), [0, 1.00, 0.08]);
+            }
+        }
+
+        function buildGolemEnemy(group, style) {
+            const isBoss = style === 'boss2';
+            const stone = enemyTexturedMaterial(style, 'stone', { roughness: 0.98, metalness: 0.08 });
+            const lava = enemyTexturedMaterial(style, 'lava', { emissive: 0x7f1d1d, emissiveIntensity: 0.28 });
+            const dark = enemyPlainMaterial('#292524');
+            const glow = enemyPlainMaterial(isBoss ? '#fde047' : '#facc15', { emissive: isBoss ? 0xf97316 : 0xf59e0b, emissiveIntensity: 0.9 });
+            const s = isBoss ? 1.18 : 1;
+
+            enemyMesh(group, new THREE.DodecahedronGeometry(0.70 * s, 0), stone, [0, 0.04, 0], [1.05, 0.94, 0.82]);
+            enemyMesh(group, new THREE.DodecahedronGeometry(0.48 * s, 0), stone, [0, 0.82 * s, 0.02], [1.04, 0.98, 0.82]);
+            for (const side of [-1, 1]) {
+                enemyMesh(group, new THREE.DodecahedronGeometry(0.39 * s, 0), stone,
+                    [side * 0.82 * s, 0.28, 0], [1.18, 1.05, 0.95]);
+                enemyMesh(group, new THREE.BoxGeometry(0.42 * s, 0.42 * s, 0.42 * s), stone,
+                    [side * 0.28 * s, -0.72, 0.02], [1, 1, 1], [0, 0, side * 0.06]);
+                enemyMesh(group, new THREE.SphereGeometry(0.09, 10, 8), glow,
+                    [side * 0.19 * s, 0.85 * s, 0.40 * s]);
+            }
+            enemyMesh(group, new THREE.BoxGeometry(0.30, 0.07, 0.05), dark, [0, 0.55 * s, 0.43 * s]);
+            enemyMesh(group, new THREE.DodecahedronGeometry(0.24, 0), lava,
+                [0, 0.03, 0.47], [0.95, 1.12, 0.36]);
+            // Moss on normal golems; molten shards on the Chapter 2 boss.
+            if (isBoss) {
+                for (let i = 0; i < 5; i++) {
+                    enemyMesh(group, new THREE.ConeGeometry(0.12, 0.35, 5), enemyPlainMaterial('#f97316', { emissive: 0xea580c, emissiveIntensity: 0.5 }),
+                        [(i - 2) * 0.25, 1.25 + (i % 2) * 0.08, 0]);
+                }
+            } else {
+                const moss = enemyPlainMaterial('#65a30d');
+                enemyMesh(group, new THREE.BoxGeometry(0.30, 0.10, 0.23), moss, [-0.30, 0.50, 0.39]);
+                enemyMesh(group, new THREE.BoxGeometry(0.21, 0.08, 0.18), moss, [0.48, 0.25, 0.33]);
+            }
+        }
+
+        function applyEnemyTexture(group, style = 'slime') {
+            if (!group) return;
+            clearEnemyModel(group);
+            if (style === 'rock' || style === 'boss2') {
+                buildGolemEnemy(group, style);
+            } else if (style.startsWith('goblin') || style === 'boss3') {
+                buildGoblinEnemy(group, style);
+            } else {
+                buildSlimeEnemy(group, style);
+            }
+            group.userData.enemyStyle = style;
+        }
+
+        function pulseEnemyGroup(group, kind = 'hit') {
+            if (!group) return;
+            const original = group.scale.clone();
+            const peak = kind === 'attack' ? 1.16 : 0.88;
+            group.scale.set(original.x * peak, original.y * peak, original.z * peak);
+            setTimeout(() => {
+                if (group && group.parent) group.scale.copy(original);
+            }, kind === 'attack' ? 180 : 140);
+        }
+
+        // Transient Three.js effects for each skill. All geometry is generated locally.
+        const skillEffects = [];
+        function skillEffectMaterial(color, opacity = 0.92) {
+            return new THREE.MeshBasicMaterial({ color, transparent:true, opacity, depthWrite:false });
+        }
+
+        function spawnSkillEffect(skill, targetGroup) {
+            if (!scene || !targetGroup) return;
+            const fx = new THREE.Group();
+            const color = skill.color;
+            const orb = (radius, materialColor = color, segments = 12) => new THREE.Mesh(
+                new THREE.SphereGeometry(radius, segments, Math.max(6, Math.floor(segments * 0.75))),
+                skillEffectMaterial(materialColor)
+            );
+            const ring = (radius, tube, materialColor = color) => new THREE.Mesh(
+                new THREE.TorusGeometry(radius, tube, 7, 20), skillEffectMaterial(materialColor)
+            );
+            let duration = 0.68;
+            let kind = skill.motion;
+            fx.position.copy(targetGroup.position);
+            fx.position.y = kind === 'skill-water' ? -0.72 : targetGroup.position.y + 0.25;
+
+            if (kind === 'skill-fire') {
+                const core = orb(0.28, 0xffc247, 14); core.scale.set(1, 1.25, 0.8); fx.add(core);
+                const halo = ring(0.38, 0.075, 0xff4b24); halo.rotation.y = 0.35; fx.add(halo);
+                for (let i=0;i<5;i++) {
+                    const spark = orb(0.07, i%2 ? 0xffd166 : 0xff5a24, 8);
+                    const a = i * Math.PI * 2 / 5;
+                    spark.position.set(Math.cos(a)*0.42, Math.sin(a)*0.42, 0.06);
+                    fx.add(spark);
+                }
+            } else if (kind === 'skill-water') {
+                duration = 0.82;
+                for (let i=0;i<3;i++) {
+                    const wave = ring(0.28 + i*0.18, 0.045, i===1 ? 0x9bf3ff : 0x25a9ff);
+                    wave.rotation.x = Math.PI/2;
+                    wave.position.y = 0.05 + i*0.035;
+                    fx.add(wave);
+                }
+                for (let i=0;i<7;i++) {
+                    const drop = orb(0.07, i%2 ? 0x9bf3ff : 0x25a9ff, 8);
+                    const a = i * Math.PI * 2 / 7;
+                    drop.position.set(Math.cos(a)*0.38, 0.12 + Math.random()*0.2, Math.sin(a)*0.38);
+                    fx.add(drop);
+                }
+            } else if (kind === 'skill-thunder') {
+                duration = 0.42;
+                const points = [new THREE.Vector3(-0.24,1.55,0),new THREE.Vector3(0.12,1.12,0.03),new THREE.Vector3(-0.10,0.82,0),new THREE.Vector3(0.22,0.35,0.02)];
+                const lightning = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineBasicMaterial({color:0xfff68b,transparent:true,opacity:1}));
+                fx.add(lightning);
+                const flash = orb(0.38, 0xfff35a, 12); flash.position.set(0,0.2,0); fx.add(flash);
+                const outer = ring(0.48,0.055,0xffca38); outer.position.y=0.2; fx.add(outer);
+            } else if (kind === 'skill-meteor') {
+                duration = 0.72;
+                fx.position.y = targetGroup.position.y + 2.25;
+                const meteor = orb(0.34, 0xff762e, 10); meteor.scale.set(0.85,1.2,0.85); fx.add(meteor);
+                const tail = new THREE.Mesh(new THREE.ConeGeometry(0.23,0.85,7), skillEffectMaterial(0xffd166));
+                tail.position.y=0.58; tail.rotation.z=Math.PI; fx.add(tail);
+                const impact = ring(0.35,0.07,0xffb33b); impact.position.y=-1.8; fx.add(impact);
+            } else if (kind === 'skill-shadow') {
+                duration = 0.78;
+                const core = orb(0.36,0x4c1d95,14); core.scale.set(1.1,1.15,1.1); fx.add(core);
+                const aura = ring(0.54,0.09,0xc4b5fd); aura.rotation.y=0.5; fx.add(aura);
+                const inner = ring(0.28,0.045,0x7c3aed); inner.rotation.y=-0.6; fx.add(inner);
+                for (let i=0;i<4;i++) {
+                    const mote=orb(0.075,0xddd6fe,8), a=i*Math.PI/2;
+                    mote.position.set(Math.cos(a)*0.63,Math.sin(a)*0.35,Math.sin(a)*0.4); fx.add(mote);
+                }
+            } else if (kind === 'skill-rainbow') {
+                duration = 0.9;
+                const rainbowColors = [0xff595e,0xffca3a,0x8ac926,0x1982c4,0x6a4c93,0xff7bcb];
+                rainbowColors.forEach((c,i)=>{
+                    const orbMesh=orb(0.14,c,10), a=i*Math.PI*2/rainbowColors.length;
+                    orbMesh.position.set(Math.cos(a)*0.62,Math.sin(a)*0.62,0.12); fx.add(orbMesh);
+                });
+                const halo=ring(0.62,0.06,0xffa5e5); halo.rotation.y=0.6; fx.add(halo);
+                const center=orb(0.23,0xffffff,12); fx.add(center);
+            }
+
+            fx.userData.skillEffect = { kind, elapsed:0, duration, startY:fx.position.y };
+            scene.add(fx);
+            skillEffects.push(fx);
+        }
+
+        function updateSkillEffects(delta) {
+            for (let i=skillEffects.length-1;i>=0;i--) {
+                const fx=skillEffects[i], data=fx.userData.skillEffect;
+                data.elapsed += delta;
+                const progress=Math.min(1,data.elapsed/data.duration);
+                const pulse=Math.sin(progress*Math.PI);
+                if (data.kind==='skill-meteor') {
+                    fx.position.y=data.startY-2.05*progress;
+                    fx.rotation.z=-0.16;
+                    fx.scale.setScalar(0.72+0.45*progress);
+                } else if (data.kind==='skill-water') {
+                    fx.scale.setScalar(0.35+1.85*progress);
+                    fx.rotation.y += delta*1.8;
+                    fx.rotation.z += delta*0.9;
+                } else if (data.kind==='skill-thunder') {
+                    fx.scale.set(0.75+0.4*pulse,0.8+0.5*pulse,1);
+                } else {
+                    fx.scale.setScalar(0.35+1.05*pulse+0.25*progress);
+                    if (data.kind==='skill-rainbow' || data.kind==='skill-shadow') fx.rotation.z += delta*2.7;
+                    if (data.kind==='skill-fire') fx.rotation.y += delta*2.4;
+                }
+                const opacity = progress < 0.52 ? 0.95 : Math.max(0,0.95*(1-progress)/0.48);
+                fx.traverse(obj=>{
+                    if (obj.material && 'opacity' in obj.material) obj.material.opacity=opacity;
+                });
+                if (progress>=1) {
+                    scene.remove(fx);
+                    fx.traverse(obj=>{
+                        if (obj.geometry) obj.geometry.dispose();
+                        if (obj.material) {
+                            if (Array.isArray(obj.material)) obj.material.forEach(m=>m.dispose());
+                            else obj.material.dispose();
+                        }
+                    });
+                    skillEffects.splice(i,1);
+                }
+            }
+        }
+
+        function createProceduralEnemy(style = 'slime') {
+            const group = new THREE.Group();
+            applyEnemyTexture(group, style);
+            group.position.set(0, -0.2, 0);
+            return group;
+        }
+
+        // --- Animation Loop ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+            const time = clock.getElapsedTime();
+
+            if (game.mode === 'RAISE') {
+                if (petGroup) {
+                    const floatOffsetY = Math.sin(time * 3) * 0.1;
+                    
+                    if (animationState === 'jump') {
+                        animTimer -= delta;
+                        petGroup.position.y = -0.2 + floatOffsetY + Math.sin(animTimer * 10) * 0.5;
+                        petGroup.rotation.y += delta * 5;
+                        if (animTimer <= 0) {
+                            animationState = 'idle';
+                            petGroup.rotation.y = 0;
+                        }
+                    } else if (animationState === 'spin') {
+                        animTimer -= delta;
+                        petGroup.position.y = -0.2 + floatOffsetY;
+                        petGroup.rotation.y += delta * 10;
+                        if (animTimer <= 0) {
+                            animationState = 'idle';
+                            petGroup.rotation.y = 0;
+                        }
+                    } else {
+                        petGroup.position.y = -0.2 + floatOffsetY;
+
+                        if (isWaiting) {
+                            wanderTimer -= delta;
+                            petGroup.rotation.y = Math.sin(time * 1.5) * 0.2;
+                            if (wanderTimer <= 0) {
+                                setNewWanderTarget();
+                            }
+                        } else {
+                            const dir = new THREE.Vector3().subVectors(wanderTarget, petGroup.position);
+                            dir.y = 0;
+                            const dist = dir.length();
+
+                            if (dist > 0.1) {
+                                dir.normalize();
+                                petGroup.position.addScaledVector(dir, wanderSpeed * delta);
+                                
+                                const targetRotationY = Math.atan2(dir.x, dir.z);
+                                let diff = targetRotationY - petGroup.rotation.y;
+                                while (diff < -Math.PI) diff += Math.PI * 2;
+                                while (diff > Math.PI) diff -= Math.PI * 2;
+                                petGroup.rotation.y += diff * Math.min(1.0, delta * 5);
+                            } else {
+                                isWaiting = true;
+                                wanderTimer = 2.0 + Math.random() * 2.0;
+                            }
+                        }
+                    }
+                }
+            } else if (game.mode === 'BATTLE') {
+                if (petGroup) {
+                    petGroup.position.y = -0.2 + Math.sin(time * 5) * 0.05;
+                    updateBattleWander(petGroup, petWander, delta, time, 'pet');
+                    updateCombatMotion(petGroup, delta, time, 'pet');
+                }
+                if (enemyGroup) {
+                    enemyGroup.position.y = -0.2 + Math.cos(time * 4) * 0.1;
+                    updateBattleWander(enemyGroup, enemyWander, delta, time, 'enemy');
+                    updateCombatMotion(enemyGroup, delta, time, 'enemy');
+                }
+                if (!battleEnding) {
+                    autoBattleTimer -= delta;
+                    if (autoBattleTimer <= 0) {
+                        performAutoBattleAction();
+                        autoBattleTimer = 1.0 + Math.random() * 1.2;
+                    }
+                }
+            }
+
+            updateSkillEffects(delta);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            const container = document.getElementById('canvas-container');
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+
+        const petWander = { target: new THREE.Vector3(-1.7, -0.2, 0), wait: 0, moving: true };
+        const enemyWander = { target: new THREE.Vector3(1.7, -0.2, 0), wait: 0, moving: true };
+        const combatMotion = {
+            pet: { type: null, time: 0, duration: 0, start: new THREE.Vector3(), direction: 1, startRotationX: 0, startRotationY: 0, startRotationZ: 0 },
+            enemy: { type: null, time: 0, duration: 0, start: new THREE.Vector3(), direction: -1, startRotationX: 0, startRotationY: 0, startRotationZ: 0 }
+        };
+
+        function chooseBattleWanderTarget(group, state, role) {
+            const bounds = role === 'pet'
+                ? { minX: battleBounds.minX, maxX: 0.2 }
+                : { minX: -0.2, maxX: battleBounds.maxZ + 1.2 };
+            state.target.set(
+                bounds.minX + Math.random() * (bounds.maxX - bounds.minX),
+                -0.2,
+                battleBounds.minZ + Math.random() * (battleBounds.maxZ - battleBounds.minZ)
+            );
+            state.moving = true;
+            state.wait = 0;
+        }
+
+        function updateBattleWander(group, state, delta, time, role) {
+            if (combatMotion[role].type) return;
+            if (state.wait > 0) {
+                state.wait -= delta;
+                group.rotation.y += Math.sin(time * 2) * delta * 0.2;
+                if (state.wait <= 0) chooseBattleWanderTarget(group, state, role);
+                return;
+            }
+            const direction = new THREE.Vector3().subVectors(state.target, group.position);
+            direction.y = 0;
+            const distance = direction.length();
+            if (distance < 0.12) {
+                state.wait = 0.6 + Math.random() * 1.6;
+                return;
+            }
+            direction.normalize();
+            const speed = role === 'pet' ? 1.15 : 0.95;
+            group.position.addScaledVector(direction, Math.min(distance, speed * delta));
+            group.rotation.y = Math.atan2(direction.x, direction.z);
+            const bounds = role === 'pet'
+                ? { minX: battleBounds.minX, maxX: 0.2 }
+                : { minX: -0.2, maxX: battleBounds.maxX + 2.0 };
+            group.position.x = THREE.MathUtils.clamp(group.position.x, bounds.minX, bounds.maxX);
+            group.position.z = THREE.MathUtils.clamp(group.position.z, battleBounds.minZ, battleBounds.maxZ);
+        }
+
+        function triggerCombatMotion(role, type) {
+            const group = role === 'pet' ? petGroup : enemyGroup;
+            if (!group) return;
+            const motion = combatMotion[role];
+            motion.type = type;
+            motion.time = 0;
+            const durations = { attack:0.42, hit:0.32, 'skill-fire':0.66, 'skill-water':0.82, 'skill-thunder':0.43, 'skill-meteor':0.78, 'skill-shadow':0.72, 'skill-rainbow':0.9 };
+            motion.duration = durations[type] || 0.42;
+            motion.start.copy(group.position);
+            motion.startRotationX = group.rotation.x;
+            motion.startRotationY = group.rotation.y;
+            motion.startRotationZ = group.rotation.z;
+            const target = role === 'pet' ? enemyGroup : petGroup;
+            motion.direction = target && target.position.x >= group.position.x ? 1 : -1;
+        }
+
+        function updateCombatMotion(group, delta, time, role) {
+            const motion = combatMotion[role];
+            if (!motion.type) return;
+            motion.time += delta;
+            const progress = Math.min(1, motion.time / motion.duration);
+            const pulse = Math.sin(progress * Math.PI);
+            const baseY = motion.start.y;
+            if (motion.type === 'attack') {
+                group.position.x = motion.start.x + motion.direction * 0.48 * pulse;
+                group.position.y = baseY + 0.42 * pulse;
+                group.rotation.z = motion.startRotationZ + (role === 'pet' ? -1 : 1) * 0.22 * pulse;
+            } else if (motion.type === 'hit') {
+                group.position.x = motion.start.x - motion.direction * 0.22 * pulse;
+                group.position.y = baseY + 0.12 * pulse;
+                group.rotation.z = motion.startRotationZ + (role === 'pet' ? 1 : -1) * 0.16 * pulse;
+            } else if (motion.type === 'skill-fire') {
+                group.position.x = motion.start.x + motion.direction * 0.68 * pulse;
+                group.position.y = baseY + 0.88 * pulse;
+                group.rotation.z = motion.startRotationZ - 0.48 * pulse;
+            } else if (motion.type === 'skill-water') {
+                group.position.x = motion.start.x + motion.direction * 0.24 * pulse;
+                group.position.y = baseY + 1.02 * pulse;
+                group.rotation.y = motion.startRotationY + progress * Math.PI * 2;
+                group.rotation.z = motion.startRotationZ + 0.16 * pulse;
+            } else if (motion.type === 'skill-thunder') {
+                group.position.x = motion.start.x + motion.direction * 0.88 * pulse;
+                group.position.y = baseY + 0.46 * pulse;
+                group.rotation.z = motion.startRotationZ - motion.direction * 0.34 * pulse;
+            } else if (motion.type === 'skill-meteor') {
+                group.position.x = motion.start.x + motion.direction * 0.42 * pulse;
+                group.position.y = baseY + 1.28 * pulse;
+                group.rotation.z = motion.startRotationZ + 0.65 * pulse;
+                group.rotation.y = motion.startRotationY + progress * Math.PI * 2.2;
+            } else if (motion.type === 'skill-shadow') {
+                group.position.x = motion.start.x + motion.direction * 0.38 * pulse;
+                group.position.y = baseY - 0.12 * (1-pulse) + 0.42 * pulse;
+                group.rotation.z = motion.startRotationZ + 0.72 * pulse;
+            } else if (motion.type === 'skill-rainbow') {
+                group.position.x = motion.start.x + motion.direction * 0.34 * pulse;
+                group.position.y = baseY + 0.92 * pulse;
+                group.rotation.y = motion.startRotationY + progress * Math.PI * 2.4;
+                group.rotation.z = motion.startRotationZ + 0.25 * pulse;
+            }
+            if (progress >= 1) {
+                group.position.copy(motion.start);
+                group.rotation.set(motion.startRotationX, motion.startRotationY, motion.startRotationZ);
+                motion.type = null;
+            }
+        }
+
+        function updateUI() {
+            document.getElementById('stat-level').innerText = game.level;
+            document.getElementById('stat-exp').innerText = game.exp;
+            document.getElementById('stat-next-exp').innerText = game.nextExp;
+            document.getElementById('stat-hunger').innerText = game.hunger;
+            document.getElementById('stat-mood').innerText = game.mood;
+            document.getElementById('stat-hp').innerText = game.hp;
+            document.getElementById('stat-max-hp').innerText = game.maxHp;
+            document.getElementById('stat-gold').innerText = game.gold;
+            const weaponStats = gearStats('weapon');
+            const shieldStats = gearStats('shield');
+            document.getElementById('stat-attack').innerText = getEffectiveAttack();
+            document.getElementById('stat-defense').innerText = getEffectiveDefense();
+            document.getElementById('stat-mood-buff').innerText = `+${getMoodBuffPercent()}%`;
+            document.getElementById('stat-equipment-summary').innerText =
+                `武器：${weaponStats.item ? gearName(weaponStats.item) : 'なし'} / 盾：${shieldStats.item ? gearName(shieldStats.item) : 'なし'}`;
+            syncPetEquipmentVisual();
+
+            document.getElementById('bar-exp').style.width = `${(game.exp / game.nextExp) * 100}%`;
+            document.getElementById('bar-hunger').style.width = `${game.hunger}%`;
+            document.getElementById('bar-mood').style.width = `${game.mood}%`;
+            document.getElementById('bar-hp').style.width = `${Math.max(0, Math.min(100, (game.hp / game.maxHp) * 100))}%`;
+        }
+
+        function setSpeech(text) {
+            document.getElementById('speech-text').innerText = text;
+        }
+
+        function setNotification(text) {
+            document.getElementById('notification-banner').innerText = text;
+        }
+
+        function showModal(title, message, icon = '🏆') {
+            document.getElementById('modal-title').innerText = title;
+            document.getElementById('modal-message').innerText = message;
+            document.getElementById('modal-icon').innerText = icon;
+            document.getElementById('custom-modal').classList.remove('hidden');
+            document.getElementById('custom-modal').classList.add('flex');
+        }
+
+        function closeModal() {
+            document.getElementById('custom-modal').classList.add('hidden');
+            document.getElementById('custom-modal').classList.remove('flex');
+        }
+
+        function actionPet() {
+            playGameSound('pet');
+            // Petting improves mood only; it does not grant EXP or trigger level-ups.
+            game.mood = Math.min(100, game.mood + 3);
+            updateUI();
+
+            animationState = 'jump';
+            animTimer = 1.0;
+
+            const phrases = [
+                "「なでてくれて嬉しいな♪ゴロゴロ…」",
+                "「もっと撫でて！大好き！」",
+                "「きもちいいよ〜ありがとう！」"
+            ];
+            setSpeech(phrases[Math.floor(Math.random() * phrases.length)]);
+            setNotification("✋ ぷに太をなでました！機嫌が少し上がり、攻撃・防御バフも強化！");
+        }
+
+        function actionFeed() {
+            if (game.gold < 30) {
+                setNotification("⚠️ ゴールドが足りません！（必要: 30G）");
+                return;
+            }
+            game.gold -= 30;
+            playGameSound('feed');
+            game.hunger = Math.min(100, game.hunger + 25);
+            const healed = Math.min(game.maxHp - game.hp, Math.ceil(game.maxHp * 0.30));
+            game.hp = Math.min(game.maxHp, game.hp + healed);
+            game.exp += 20;
+            checkLevelUp();
+            updateUI();
+
+            animationState = 'spin';
+            animTimer = 0.8;
+
+            setSpeech("「おいしい！モリモリ元気が出たよ！」");
+            setNotification(`🍎 ごはんをあげました！満腹度が回復！ HPも ${healed} 回復！`);
+        }
+
+        function actionPlay() {
+            if (game.hunger < 15) {
+                setSpeech("「お腹がペコペコで遊べないよ…」");
+                setNotification("⚠️ お腹が空きすぎていて遊べません！");
+                return;
+            }
+            playGameSound('play');
+            game.hunger = Math.max(0, game.hunger - 15);
+            game.mood = Math.min(100, game.mood + 7);
+            game.exp += 30;
+            checkLevelUp();
+            updateUI();
+
+            animationState = 'jump';
+            animTimer = 1.2;
+
+            setSpeech("「わーい！楽しい！もっと遊ぼう！」");
+            setNotification("⚽ 一緒に遊びました！機嫌が上がり、攻撃・防御バフも強化！");
+        }
+
+        function checkLevelUp() {
+            if (game.exp >= game.nextExp) {
+                game.level++;
+                game.exp -= game.nextExp;
+                game.nextExp = Math.floor(game.nextExp * 1.5);
+                game.maxHp = 100 + (game.level - 1) * 20;
+                game.hp = Math.min(game.maxHp, game.hp + 20);
+                playGameSound('levelUp');
+                showModal("レベルアップ！ 🎉", `ぷに太がレベル ${game.level} に上がった！`, "🎊");
+                setSpeech(`("やったね！レベル ${game.level} になったよ！")`);
+            }
+        }
+
+        // --- Battle Mode & Dungeon Level Scaling ---
+        function startBattle(chapter = 1, stage = 1) {
+            // Enforce the normal dungeon unlock rule even if this function is called directly.
+            // Infinite Dungeon remains independent and can advance without stage clears.
+            if (!infiniteRun.active && !isStageUnlocked(chapter, stage)) {
+                setNotification(`🔒 ステージ ${chapter}-${stage} は未解放！ひとつ前のステージをクリアしよう。`);
+                return;
+            }
+            if (game.hp <= 0) {
+                setNotification('⚠️ ぷに太のHPが0だよ！ごはんをあげてHPを回復してから挑もう！');
+                return;
+            }
+            currentStage = infiniteRun.active
+                ? { chapter, stage, id: `infinite-${infiniteRun.floor}`, floor: infiniteRun.floor }
+                : { chapter, stage, id: `${chapter}-${stage}` };
+            game.mode = 'BATTLE';
+            setRaisingEnvironment(false);
+            setBattleChapterEnvironment(chapter);
+            heldKeys.clear();
+            autoBattleTimer = 0.8;
+            battleEnding = false;
+            document.getElementById('mode-badge').innerHTML = infiniteRun.active ? '♾️ 無限ダンジョン' : '⚔️ バトルモード';
+            document.getElementById('mode-badge').className = infiniteRun.active
+                ? 'px-3 py-1 bg-amber-600/90 backdrop-blur-md text-white text-xs font-bold rounded-xl shadow-lg border border-amber-300/50 flex items-center gap-1.5'
+                : 'px-3 py-1 bg-red-600/90 backdrop-blur-md text-white text-xs font-bold rounded-xl shadow-lg border border-red-400/30 flex items-center gap-1.5';
+            document.getElementById('raising-controls').classList.add('hidden');
+            document.getElementById('battle-ui').classList.remove('hidden');
+            document.getElementById('battle-ui').classList.add('flex');
+            document.getElementById('speech-bubble').classList.add('hidden');
+            updateInfiniteHud();
+
+            controls.enabled = false;
+            camera.position.set(0, 3, 7);
+            controls.target.set(0, 0, 0);
+
+            // Revised Level Curve: Chapter 1 (1-10), Chapter 2 (11-20), Chapter 3 (21-30)
+            const dungeonLevel = infiniteRun.active ? infiniteRun.floor : (chapter - 1) * 10 + stage;
+            game.enemy.level = dungeonLevel;
+            if (infiniteRun.active) {
+                // Quadratic HP curve and gently rising attack curve keep the mode unbounded.
+                game.enemy.maxHp = Math.round(45 + dungeonLevel * 18 + dungeonLevel * dungeonLevel * 0.35);
+                game.enemy.atk = Math.round(6 + dungeonLevel * 2.6 + Math.pow(dungeonLevel, 1.15) * 0.4);
+            } else {
+                game.enemy.maxHp = 45 + dungeonLevel * 20;
+                game.enemy.atk = 6 + dungeonLevel * 3;
+            }
+            game.enemy.hp = game.enemy.maxHp;
+
+            const isBossStage = stage === 10;
+
+            // Enemy Roster with Slimes & Goblins
+            const chapterNames = {
+                1: { normal: 'プルプルスライム', goblin: 'ゴブリンソルジャー', boss: 'キングスライム', minions: ['チビスライム', 'ゴブリンスカウト'] },
+                2: { normal: 'マグマスライム', goblin: 'ゴブリンバーサーカー', boss: '灼岩将軍マグナロック', minions: ['フレイムスライム', 'ゴブリンアーチャー'] },
+                3: { normal: 'シャドウスライム', goblin: 'ゴブリンロード', boss: '月影王ノクス', minions: ['ダークスライム', 'シャドウゴブリン'] }
+            };
+            const textureStyles = {
+                1: { normal: 'slime', goblin: 'goblin', boss: 'boss1', minions: ['slime', 'goblin'] },
+                2: { normal: 'ember', goblin: 'goblinEmber', boss: 'boss2', minions: ['ember', 'goblinEmber'] },
+                3: { normal: 'shadow', goblin: 'goblinShadow', boss: 'boss3', minions: ['shadow', 'goblinShadow'] }
+            };
+
+            const names = chapterNames[chapter] || chapterNames[1];
+            const styles = textureStyles[chapter] || textureStyles[1];
+
+            // 40% Chance for a Flock (Multiple enemies) on regular stages
+            const isFlock = !isBossStage && Math.random() < 0.40;
+            
+            // Choose main enemy type
+            const isGoblinMain = Math.random() < 0.5;
+            game.enemy.name = isBossStage ? names.boss : (isGoblinMain ? names.goblin : names.normal);
+            if (infiniteRun.active && dungeonLevel > 30) {
+                const depthTitle = ['深層', '冥界', '極限', '終焉'][Math.min(3, Math.floor((dungeonLevel - 31) / 25))];
+                game.enemy.name = `${depthTitle}の${game.enemy.name}`;
+            }
+            const mainStyle = isBossStage ? styles.boss : (isGoblinMain ? styles.goblin : styles.normal);
+
+            minionGroups.forEach(g => { if (g.parent) g.parent.remove(g); });
+            minionGroups = [];
+            enemyParty = [];
+
+            enemyGroup.visible = true;
+            enemyGroup.position.set(2.15, -0.2, -0.15);
+            enemyGroup.rotation.set(0, 0, 0);
+            enemyGroup.scale.setScalar(isBossStage ? 1.25 : 1);
+            applyEnemyTexture(enemyGroup, mainStyle);
+
+            const bossOrSolo = {
+                name: game.enemy.name,
+                level: game.enemy.level,
+                maxHp: isBossStage ? Math.round(game.enemy.maxHp * 1.8) : game.enemy.maxHp,
+                hp: isBossStage ? Math.round(game.enemy.maxHp * 1.8) : game.enemy.maxHp,
+                atk: isBossStage ? Math.round(game.enemy.atk * 1.4) : game.enemy.atk,
+                group: enemyGroup,
+                style: mainStyle,
+                isBoss: isBossStage,
+                alive: true
+            };
+            enemyParty.push(bossOrSolo);
+
+            // Add Minions for Bosses OR Flock encounters
+            if (isBossStage || isFlock) {
+                const count = isBossStage ? 2 : (Math.random() < 0.5 ? 1 : 2);
+                for (let i = 0; i < count; i++) {
+                    const minion = createProceduralEnemy();
+                    minion.scale.setScalar(0.65);
+                    minion.position.set(i === 0 ? 1.15 : 3.15, -0.2, i === 0 ? 0.95 : -0.95);
+                    minion.rotation.set(0, i === 0 ? -0.45 : 0.45, 0);
+
+                    const mStyle = styles.minions[i % styles.minions.length];
+                    const mName = names.minions[i % names.minions.length];
+                    
+                    applyEnemyTexture(minion, mStyle);
+                    scene.add(minion);
+                    minionGroups.push(minion);
+
+                    const mHp = Math.round(game.enemy.maxHp * 0.45);
+                    enemyParty.push({
+                        name: mName,
+                        level: Math.max(1, game.enemy.level - 1),
+                        maxHp: mHp,
+                        hp: mHp,
+                        atk: Math.max(3, Math.round(game.enemy.atk * 0.6)),
+                        group: minion,
+                        style: mStyle,
+                        isBoss: false,
+                        alive: true
+                    });
+                }
+            }
+
+            updateEnemyHpUI();
+
+            petGroup.position.set(-2.1, -0.2, 0);
+            petGroup.rotation.y = 0;
+            petWander.target.set(-1.0, -0.2, 0.6);
+            enemyWander.target.set(1.0, -0.2, -0.6);
+            petWander.wait = 0;
+            enemyWander.wait = 0;
+            combatMotion.pet.type = null;
+            combatMotion.enemy.type = null;
+
+            document.getElementById('battle-turn-text').innerText = infiniteRun.active
+                ? `∞ 第${infiniteRun.floor}波${isBossStage ? ' BOSS' : ''}`
+                : (isBossStage ? `BOSS ${chapter}-10` : `STAGE ${chapter}-${stage}`);
+            document.getElementById('battle-commands').textContent = infiniteRun.active
+                ? '♾️ 無限連戦中：倒れるまで敵が出現！'
+                : '⚔️ オートバトル中：キャラクターが自動で攻撃します';
+            const startLog = infiniteRun.active
+                ? (isBossStage ? `【無限ダンジョン】第${infiniteRun.floor}波・ボス ${game.enemy.name} と配下が出現！`
+                    : (isFlock ? `【第${infiniteRun.floor}波・群れ遭遇！】 ${game.enemy.name} たちが出現！`
+                    : `【無限ダンジョン】第${infiniteRun.floor}波：${game.enemy.name} (Lv.${game.enemy.level}) が出現！`))
+                : (isBossStage
+                    ? `ボスステージ ${chapter}-10！ ${game.enemy.name} と配下が出現！`
+                    : (isFlock ? `【群れ遭遇！】 ${game.enemy.name} たちが群れで現れた！` : `ステージ ${chapter}-${stage}：${game.enemy.name} (Lv.${game.enemy.level}) が出現！`));
+            appendBattleLog(startLog);
+            playGameSound(isBossStage ? 'bossStart' : 'battleStart');
+            updateInfiniteHud();
+            setNotification(infiniteRun.active
+                ? `♾️ 第${infiniteRun.floor}波開始！敵Lv.${game.enemy.level} / SCORE ${infiniteRun.score.toLocaleString('ja-JP')}`
+                : `⚔️ ステージ ${chapter}-${stage} 開始！(敵Lv.${game.enemy.level})`);
+        }
+
+        function endBattle(victory) {
+            if (infiniteRun.active && victory) {
+                clearInfiniteFloor();
+                return;
+            }
+            const infiniteResult = infiniteRun.active && !victory ? finishInfiniteRun() : null;
+            playGameSound(victory ? 'victory' : 'defeat');
+            game.mode = 'RAISE';
+            setRaisingEnvironment(true);
+            heldKeys.clear();
+            battleEnding = false;
+            autoBattleTimer = 0;
+            document.getElementById('mode-badge').innerHTML = '✨ 育成ルーム';
+            document.getElementById('mode-badge').className = 'px-3 py-1 bg-indigo-600/90 backdrop-blur-md text-white text-xs font-bold rounded-xl shadow-lg border border-indigo-400/30 flex items-center gap-1.5';
+            document.getElementById('raising-controls').classList.remove('hidden');
+            document.getElementById('battle-ui').classList.add('hidden');
+            document.getElementById('battle-ui').classList.remove('flex');
+            document.getElementById('speech-bubble').classList.remove('hidden');
+
+            controls.enabled = true;
+            enemyGroup.visible = false;
+            minionGroups.forEach(g => { g.visible = false; });
+            petGroup.position.set(0, -0.2, 0);
+            setNewWanderTarget();
+
+            if (victory) {
+                clearedStages.add(currentStage.id);
+                const bossBonus = currentStage.stage === 10 ? 2.5 : 1;
+                const rewardGold = Math.round(game.enemy.level * 60 * bossBonus);
+                const rewardExp = Math.round(game.enemy.level * 50 * bossBonus);
+                game.gold += rewardGold;
+                game.exp += rewardExp;
+                const droppedGear = (currentStage.stage === 10 || Math.random() < 0.55)
+                    ? addGearDrop(currentStage.chapter) : null;
+                checkLevelUp();
+                updateUI();
+                const lootText = droppedGear
+                    ? `\n装備ドロップ！ ${gearDescription(droppedGear)}`
+                    : '\n今回は装備ドロップなし…';
+                showModal("バトル勝利！ 🏆", `敵群を撃破した！\n報酬: ${rewardGold}G / EXP +${rewardExp}${lootText}`, "👑");
+                setSpeech(droppedGear ? `「装備を見つけたよ！ ${droppedGear.name} だ！」` : "「勝ったよー！ボク強いでしょ？」");
+                setNotification(`🏆 ${rewardGold}G と EXP+${rewardExp} を獲得！${droppedGear ? ` 装備：${droppedGear.name}` : ''}`);
+            } else {
+                updateUI();
+                if (infiniteResult) {
+                    const rankText = infiniteResult.rank ? `ランキング ${infiniteResult.rank} 位` : 'ランキング TOP 10圏外';
+                    showModal('無限ダンジョン終了！ 🏆',
+                        `${infiniteResult.name} の挑戦結果
+スコア：${infiniteResult.score.toLocaleString('ja-JP')} pt
+到達：第${infiniteResult.floorReached}波 / 踏破：${infiniteResult.completedFloors}波
+撃破数：${infiniteResult.defeated}
+${rankText}
+
+記録はこのブラウザ内ランキングに保存されたよ。`, '♾️');
+                    setSpeech('「ここまで来られたよ！次はもっと奥まで進もう！」');
+                    setNotification(`♾️ 無限ダンジョン終了！ SCORE ${infiniteResult.score.toLocaleString('ja-JP')} / 第${infiniteResult.floorReached}波到達`);
+                    renderInfiniteRecords();
+                } else {
+                    showModal("バトル敗北… 💦", "ぷに太は力尽きてしまった…また特訓しよう！", "💥");
+                    setSpeech("「うぅ…強かったよ…悔しい…」");
+                    setNotification("💦 バトルに敗北しました…次は勝てるように育成しよう！");
+                }
+            }
+        }
+
+        function performAutoBattleAction() {
+            if (game.mode !== 'BATTLE' || battleEnding) return;
+
+            const livingEnemies = enemyParty.filter(e => e.alive && e.hp > 0);
+            if (!livingEnemies.length) {
+                battleEnding = true;
+                setTimeout(() => endBattle(true), 650);
+                return;
+            }
+
+            const attacker = Math.random() < 0.5 ? 'pet' : 'enemy';
+            if (attacker === 'pet') {
+                const minions = livingEnemies.filter(e => !e.isBoss);
+                const target = minions.length ? minions[Math.floor(Math.random() * minions.length)]
+                    : livingEnemies[Math.floor(Math.random() * livingEnemies.length)];
+                const availableSkills = skillCatalog.filter(skill => game.level >= skill.unlockLevel && game.mood >= skill.moodCost);
+                const skill = availableSkills.length && Math.random() < 0.48
+                    ? availableSkills[Math.floor(Math.random() * availableSkills.length)] : null;
+
+                if (skill) {
+                    playGameSound('skill', skill.motion);
+                    const targets = skill.target === 'all' ? livingEnemies.slice() : [target];
+                    game.mood = Math.max(0, game.mood - skill.moodCost);
+                    triggerCombatMotion('pet', skill.motion);
+                    document.getElementById('battle-commands').textContent = `${skill.icon} スキル発動！ ${skill.name}`;
+                    appendBattleLog(`✨ ぷに太のスキル「${skill.name}」！`);
+                    targets.forEach(skillTarget => {
+                        spawnSkillEffect(skill, skillTarget.group);
+                        if (skillTarget.group === enemyGroup) triggerCombatMotion('enemy', 'hit');
+                        else pulseEnemyGroup(skillTarget.group, 'hit');
+                        const baseDmg = (25 + game.level * 5) * skill.multiplier;
+                        const dmg = Math.max(1, Math.round(baseDmg * getEffectiveAttack() / (25 + game.level * 5)));
+                        skillTarget.hp = Math.max(0, skillTarget.hp - dmg);
+                        appendBattleLog(`${skillTarget.name} に ${dmg} ダメージ！`);
+                        if (skillTarget.hp <= 0 && skillTarget.alive) {
+                            skillTarget.alive = false;
+                            skillTarget.group.visible = false;
+                            playGameSound('enemyDefeat');
+                            appendBattleLog(`${skillTarget.name} をたおした！`);
+                        }
+                    });
+                } else {
+                    playGameSound('attack');
+                    const baseDmg = 25 + game.level * 5;
+                    const dmg = Math.max(1, Math.round(baseDmg * getEffectiveAttack() / (25 + game.level * 5)));
+                    triggerCombatMotion('pet', 'attack');
+                    if (target.group === enemyGroup) triggerCombatMotion('enemy', 'hit');
+                    else pulseEnemyGroup(target.group, 'hit');
+                    target.hp = Math.max(0, target.hp - dmg);
+                    document.getElementById('battle-commands').textContent = '⚔️ 通常攻撃！';
+                    appendBattleLog(`ぷに太の通常攻撃！ ${target.name} に ${dmg} ダメージ！`);
+                    if (target.hp <= 0 && target.alive) {
+                        target.alive = false;
+                        target.group.visible = false;
+                        playGameSound('enemyDefeat');
+                        appendBattleLog(`${target.name} をたおした！`);
+                    }
+                }
+
+                const boss = enemyParty.find(e => e.isBoss) || enemyParty[0];
+                if (boss) game.enemy.hp = boss.hp;
+                updateEnemyHpUI();
+                updateUI();
+                if (enemyParty.every(e => !e.alive || e.hp <= 0)) {
+                    battleEnding = true;
+                    setTimeout(() => endBattle(true), 650);
+                    return;
+                }
+            } else {
+                const attackerEnemy = livingEnemies[Math.floor(Math.random() * livingEnemies.length)];
+                playGameSound('enemyAttack');
+                if (attackerEnemy.group === enemyGroup) triggerCombatMotion('enemy', 'attack');
+                else pulseEnemyGroup(attackerEnemy.group, 'attack');
+                triggerCombatMotion('pet', 'hit');
+                const rawDmg = Math.floor(attackerEnemy.atk * (0.8 + Math.random() * 0.4));
+                const dmg = reduceDamageByDefense(rawDmg);
+                game.hp = Math.max(0, game.hp - dmg);
+                updateUI();
+                document.getElementById('battle-commands').textContent = `💥 ${attackerEnemy.name} の攻撃！`;
+                appendBattleLog(`${attackerEnemy.name} の攻撃！ ぷに太に ${dmg} ダメージ！（HP ${game.hp}/${game.maxHp}）`);
+                if (game.hp <= 0) {
+                    battleEnding = true;
+                    setTimeout(() => endBattle(false), 650);
+                    return;
+                }
+            }
+        }
+
+        function updateEnemyHpUI() {
+            const roster = document.getElementById('enemy-party-hp-list');
+            if (!roster) return;
+            roster.innerHTML = '';
+
+            enemyParty.forEach((enemy, index) => {
+                const defeated = !enemy.alive || enemy.hp <= 0;
+                const card = document.createElement('div');
+                card.className = 'enemy-party-hp-card';
+                card.style.cssText = `padding:7px;background:rgba(15,23,42,.88);border:1px solid ${defeated ? '#64748b' : 'rgba(248,113,113,.75)'};opacity:${defeated ? '.72' : '1'};`;
+
+                const heading = document.createElement('div');
+                heading.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:5px;margin-bottom:4px;min-width:0;';
+                const name = document.createElement('span');
+                name.textContent = enemy.name;
+                name.title = enemy.name;
+                name.style.cssText = 'font-size:11px;font-weight:bold;color:' + (defeated ? '#cbd5e1' : '#fca5a5') + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;';
+                const level = document.createElement('span');
+                level.textContent = defeated ? '撃破' : `Lv.${enemy.level}`;
+                level.style.cssText = 'font-size:10px;color:' + (defeated ? '#cbd5e1' : '#fecaca') + ';white-space:nowrap;flex:none;';
+                heading.append(name, level);
+
+                const numbers = document.createElement('div');
+                numbers.style.cssText = 'display:flex;justify-content:space-between;gap:4px;font-size:10px;color:#cbd5e1;margin-bottom:3px;';
+                const hpLabel = document.createElement('span');
+                hpLabel.textContent = 'HP';
+                const hpNumbers = document.createElement('span');
+                hpNumbers.textContent = `${Math.max(0, enemy.hp)} / ${enemy.maxHp}`;
+                numbers.append(hpLabel, hpNumbers);
+
+                const track = document.createElement('div');
+                track.style.cssText = 'height:7px;background:#1e293b;border:1px solid #475569;overflow:hidden;';
+                const bar = document.createElement('div');
+                bar.className = 'enemy-party-hp-bar';
+                bar.style.cssText = `height:100%;width:${Math.max(0, Math.min(100, enemy.hp / enemy.maxHp * 100))}%;background:${defeated ? '#64748b' : '#ef4444'};transition:width .25s;`;
+                track.appendChild(bar);
+
+                card.append(heading, numbers, track);
+                roster.appendChild(card);
+            });
+
+            const primary = enemyParty.find(enemy => enemy.isBoss) || enemyParty[0];
+            if (primary) game.enemy.hp = Math.max(0, primary.hp);
+        }
+
+        function appendBattleLog(msg) {
+            const log = document.getElementById('battle-log');
+            const p = document.createElement('p');
+            p.innerText = msg;
+            log.appendChild(p);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        // Initialize App on Load
+        window.addEventListener('load', () => {
+            initGameSoundPreference();
+            initThree();
+            updateUI();
+        });
+    </script>
+</body>
+</html>
